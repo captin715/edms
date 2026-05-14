@@ -1784,6 +1784,7 @@ function renderRegister() {
 
     const btn = document.getElementById('r-submit');
     btn.disabled = true; btn.textContent = '등록 중…';
+    let insertedDocId = null;  /* 롤백용 — 문서 ID 저장 */
     try {
       /* 1. 문서 마스터 */
       const { data: d, error: de } = await sb.from('documents').insert({
@@ -1795,6 +1796,7 @@ function renderRegister() {
         parent_doc_number: parent || null,
       }).select().single();
       if (de) throw de;
+      insertedDocId = d.id;  /* 이후 실패 시 삭제할 ID 저장 */
 
       /* 2. 파일 업로드 (선택) */
       let filePath = null;
@@ -1820,6 +1822,10 @@ function renderRegister() {
       await loadDocuments();
       navigate('documents');
     } catch(e) {
+      /* 실패 시 이미 생성된 문서 레코드 자동 삭제 (롤백) */
+      if (insertedDocId) {
+        await sb.from('documents').delete().eq('id', insertedDocId).then();
+      }
       toast('등록 실패: ' + e.message, 'error');
       btn.disabled = false; btn.textContent = '📝 등록';
     }
