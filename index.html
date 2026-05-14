@@ -717,7 +717,18 @@ const STAGE = {
   obsolete:    { label: '폐기',    cls: 'b-obs' },
 };
 
-const DOC_TYPES  = ['W-P','W-GL','W-SOP','W-WI','W-FR','W-QS','W-M','W-EM','W-SM','CFSPS'];
+const DOC_TYPES = [
+  /* QEMS 계층 */
+  'W-M', 'W-P', 'W-GL', 'W-SOP', 'W-WI', 'W-FR', 'W-QS', 'W-EM', 'W-SM',
+  /* CFSPS */
+  'CFSPS',
+  /* 계획문서 */
+  'CFSP-DS-PLAN',
+  /* NT문서 */
+  'CFSP-NT',
+  /* CES문서 */
+  'CES',
+];
 const ACTION_KO  = { view:'열람', download:'다운로드', upload:'업로드', approve:'승인', reject:'반려', search:'검색' };
 
 /* ╔══════════════════════════════════════════════════════════╗
@@ -821,9 +832,23 @@ async function loadStats() {
 }
 
 /* ── 시리즈 목록 ────────────────────────────────────────── */
+/* 코드 안에 5종을 고정 값으로 보유 — DB 조회 실패 시 자동 사용 */
+const SERIES_FALLBACK = [
+  { id: 'CFSPS', name_ko: 'CFSPS 표준' },
+  { id: 'QEMS',  name_ko: 'QEMS 경영시스템' },
+  { id: 'PLAN',  name_ko: '계획문서' },
+  { id: 'NT',    name_ko: 'NT문서' },
+  { id: 'CES',   name_ko: 'CES문서' },
+];
+
 async function loadSeries() {
-  const { data } = await sb.from('document_series').select('*').order('id');
-  S.series = data || [];
+  try {
+    const { data, error } = await sb.from('document_series').select('*').order('id');
+    /* DB에서 정상적으로 가져오면 사용, 비어있거나 오류면 고정값 사용 */
+    S.series = (data && data.length > 0) ? data : SERIES_FALLBACK;
+  } catch(e) {
+    S.series = SERIES_FALLBACK;
+  }
 }
 
 /* ── 결재 목록 (내 처리 필요 단계) ────────────────────── */
@@ -1627,7 +1652,29 @@ function renderRegister() {
             <label class="form-label">문서 유형<span class="required">*</span></label>
             <select class="form-control" id="rtype">
               <option value="">선택하세요</option>
-              ${DOC_TYPES.map(t => `<option value="${t}">${t}</option>`).join('')}
+              <optgroup label="── QEMS 경영시스템 ──">
+                <option value="W-M">W-M   통합경영매뉴얼</option>
+                <option value="W-P">W-P   절차서</option>
+                <option value="W-GL">W-GL  지침서</option>
+                <option value="W-SOP">W-SOP 작업표준서</option>
+                <option value="W-WI">W-WI  작업지침서</option>
+                <option value="W-FR">W-FR  양식·기록</option>
+                <option value="W-QS">W-QS  검사기준서</option>
+                <option value="W-EM">W-EM  장비매뉴얼</option>
+                <option value="W-SM">W-SM  서비스매뉴얼</option>
+              </optgroup>
+              <optgroup label="── CFSPS ──">
+                <option value="CFSPS">CFSPS 표준</option>
+              </optgroup>
+              <optgroup label="── 계획문서 ──">
+                <option value="CFSP-DS-PLAN">CFSP-DS-PLAN 계획문서</option>
+              </optgroup>
+              <optgroup label="── NT문서 ──">
+                <option value="CFSP-NT">CFSP-NT 건설신기술</option>
+              </optgroup>
+              <optgroup label="── CES문서 ──">
+                <option value="CES">CES 시스템문서</option>
+              </optgroup>
             </select>
           </div>
         </div>
@@ -1924,18 +1971,11 @@ function parseQemsFilename(filename) {
       nameStart = 1;
     }
 
-    /* 2. 버전 탐색 (V1, V2 형태 — 대소문자 무관, 파일 끝부분에 위치) */
+    /* 2. 버전 탐색 — V1·V2·Rev1·Rev2 형태 모두 인식 (대소문자 무관) */
     let verStart = -1;
     for (let i = nameStart; i < parts.length; i++) {
-      /* /^V\d+$/i — 'V1','v1','V2' 모두 인식 */
-      if (/^V\d+$/i.test(parts[i])) {
+      if (/^V\d+$/i.test(parts[i]) || /^Rev\d+$/i.test(parts[i])) {
         verStart = i;
-        if (i + 1 < parts.length && /^\d+$/.test(parts[i + 1])) {
-          const num = parts[i].replace(/^V/i, '');
-          result.version = `V${num}.${parts[i + 1]}`;
-        } else {
-          result.version = parts[i].toUpperCase();
-        }
         break;
       }
     }
@@ -2014,12 +2054,22 @@ function parseQemsFilename(filename) {
 /* 문서번호와 유형으로 시리즈를 추론합니다 (5종 기준) */
 function inferSeriesId(docNumber, docType) {
   const dn = (docNumber || '').toUpperCase();
+  const dt = (docType  || '').toUpperCase();
+
+  /* 문서번호 기준 */
   if (dn.startsWith('CFSPS'))        return 'CFSPS';
   if (dn.startsWith('CFSP-DS-PLAN')) return 'PLAN';
   if (dn.startsWith('CFSP-NT') || dn.startsWith('NT-')) return 'NT';
   if (dn.startsWith('CES'))          return 'CES';
-  /* W-P, W-GL, W-SOP, W-M, W-EM, W-SM 등 모든 QEMS 문서 */
-  if ((docType || '').startsWith('W-') || dn.startsWith('W-')) return 'QEMS';
+
+  /* 문서유형 기준 (문서번호로 못 찾은 경우 보완) */
+  if (dt === 'CFSP-DS-PLAN') return 'PLAN';
+  if (dt === 'CFSP-NT')      return 'NT';
+  if (dt === 'CES')          return 'CES';
+  if (dt === 'CFSPS')        return 'CFSPS';
+
+  /* W-xxx 계열 → 모두 QEMS */
+  if (dt.startsWith('W-') || dn.startsWith('W-')) return 'QEMS';
   return '';
 }
 
