@@ -1673,8 +1673,11 @@ function renderRegister() {
           <label class="form-label">파일 업로드</label>
           <div class="dropzone" id="r-dz" onclick="document.getElementById('r-file-input').click()">
             <div class="dropzone-icon">📎</div>
-            <div class="dropzone-text"><strong>클릭하여 파일 선택</strong> 또는 드래그</div>
+            <div class="dropzone-text"><strong>파일을 여기에 드래그</strong> 하거나 클릭하여 선택</div>
             <div class="dropzone-text text-sm" style="margin-top:4px">.docx · .xlsx · .pdf</div>
+            <div class="dropzone-text text-sm" style="margin-top:6px;color:#3949AB;font-weight:600">
+              ✨ QEMS 표준 파일명이면 모든 항목이 자동으로 입력됩니다
+            </div>
           </div>
           <input type="file" id="r-file-input" accept=".docx,.xlsx,.pdf">
           <div class="file-preview" id="r-fp"></div>
@@ -1693,7 +1696,11 @@ function renderRegister() {
   const rfp = document.getElementById('r-fp');
   rfi.addEventListener('change', e => {
     const f = e.target.files[0];
-    if (f) { rfp.textContent = `📎 ${f.name}  (${(f.size/1024).toFixed(0)} KB)`; rfp.style.display = 'block'; }
+    if (f) {
+      rfp.textContent = `📎 ${f.name}  (${(f.size/1024).toFixed(0)} KB)`;
+      rfp.style.display = 'block';
+      applyParsedToRegisterForm(f.name);   /* ✨ 파일명 자동 분석 */
+    }
   });
 
   const rdz = document.getElementById('r-dz');
@@ -1704,7 +1711,9 @@ function renderRegister() {
     const f = e.dataTransfer.files[0];
     if (f) {
       const dt = new DataTransfer(); dt.items.add(f); rfi.files = dt.files;
-      rfp.textContent = `📎 ${f.name}`; rfp.style.display = 'block';
+      rfp.textContent = `📎 ${f.name}  (${(f.size/1024).toFixed(0)} KB)`;
+      rfp.style.display = 'block';
+      applyParsedToRegisterForm(f.name);   /* ✨ 파일명 자동 분석 */
     }
   });
 
@@ -1870,6 +1879,163 @@ function toast(msg, type = '') {
   el.textContent = msg;
   wrap.appendChild(el);
   setTimeout(() => el.remove(), 3500);
+}
+
+/* ── 파일명 자동 분석 ────────────────────────────────────────
+   QEMS 표준 파일명 패턴을 분석해서 각 항목을 추출합니다.
+
+   패턴 예시:
+     W-GL-Q072000_Ver0_94_공정검사지침서_P2.docx
+     W-P-G050000_Ver0_95_문서관리절차서_P2.docx
+     W-SOP-C015100_Ver0_97_황삭작업표준서_P2.docx
+     W-M-M100000-C_Ver0_95_통합경영매뉴얼관리본_P2.docx
+
+   추출 항목:
+     [문서번호] _ [버전앞] _ [버전뒤] _ [문서명] _ [보안등급] .확장자
+────────────────────────────────────────────────────────── */
+function parseQemsFilename(filename) {
+  /* 확장자 제거 */
+  const base  = filename.replace(/\.(docx|xlsx|pdf)$/i, '');
+  const parts = base.split('_');
+
+  const result = {
+    docNumber: '', version: 'Ver 0.90', docName: '',
+    secLevel: 2,  docType: '',          seriesId: ''
+  };
+
+  if (parts.length < 2) return result;
+
+  /* 1. 문서번호 — 첫 번째 구간 그대로 사용
+        예: W-GL-Q072000, W-M-M100000-C */
+  result.docNumber = parts[0];
+
+  /* 2. 버전 위치 탐색 — Ver/Rev/Draft 패턴 */
+  let verEnd = -1;
+  for (let i = 1; i < parts.length; i++) {
+    const p = parts[i];
+    if (/^(Ver|Rev)\d+$/i.test(p)) {
+      /* 다음 구간이 순수 숫자이면 마이너 버전 (Ver0_94 → Ver 0.94) */
+      if (i + 1 < parts.length && /^\d+$/.test(parts[i + 1])) {
+        const prefix = /^Ver/i.test(p) ? 'Ver' : 'Rev';
+        const major  = p.replace(/^(Ver|Rev)/i, '');
+        result.version = `${prefix} ${major}.${parts[i + 1]}`;
+        verEnd = i + 1;
+      } else {
+        result.version = p;
+        verEnd = i;
+      }
+      break;
+    } else if (/^(V)\d+$/i.test(p)) {
+      /* CFSPS 스타일: V1_32 → V1.32 */
+      if (i + 1 < parts.length && /^\d+$/.test(parts[i + 1])) {
+        result.version = `V${p.replace(/^V/i,'')}.${ parts[i+1]}`;
+        verEnd = i + 1;
+      } else {
+        result.version = p;
+        verEnd = i;
+      }
+      break;
+    } else if (/^Draft$/i.test(p)) {
+      result.version = 'Draft';
+      verEnd = i;
+      break;
+    }
+  }
+
+  /* 3. 보안등급 — 마지막 구간이 P1~P4이면 추출 */
+  const last   = parts[parts.length - 1];
+  let   secIdx = -1;
+  if (/^P[1-4]$/i.test(last)) {
+    result.secLevel = parseInt(last[1]);
+    secIdx = parts.length - 1;
+  }
+
+  /* 4. 문서명 — 버전 구간 다음 ~ 보안등급 이전 */
+  if (verEnd >= 0) {
+    const nameStart = verEnd + 1;
+    const nameEnd   = secIdx >= 0 ? secIdx : parts.length;
+    result.docName  = parts.slice(nameStart, nameEnd).join(' ');
+  }
+
+  /* 5. 문서유형 추출 */
+  const dn = result.docNumber.split('-');
+  if (dn[0] === 'W' && dn.length >= 2) {
+    result.docType = `W-${dn[1]}`;   /* W-GL, W-P, W-SOP … */
+  } else if (/^CFSPS/i.test(result.docNumber)) {
+    result.docType = 'CFSPS';
+  }
+
+  /* 6. 시리즈 추론 */
+  result.seriesId = inferSeriesId(result.docNumber, result.docType);
+
+  return result;
+}
+
+/* 문서번호와 유형으로 시리즈를 추론합니다 */
+function inferSeriesId(docNumber, docType) {
+  if (docType === 'W-M')  return 'W-M';
+  if (docType === 'W-EM') return 'W-EM';
+  if (docType === 'W-SM') return 'W-SM';
+  if (/^CFSPS/i.test(docNumber)) return 'CFSPS';
+
+  /* 문서번호 3번째 구간의 첫 글자로 시리즈 판별
+     예: W-GL-Q072000 → Q → Q-series */
+  const parts = docNumber.split('-');
+  const seriesMap = {
+    G: 'G-series', C: 'C-series', Q: 'Q-series',
+    E: 'E-series', S: 'S-series', R: 'R-series'
+  };
+  for (let i = 2; i < parts.length; i++) {
+    const ch = (parts[i][0] || '').toUpperCase();
+    if (seriesMap[ch]) return seriesMap[ch];
+  }
+  return '';
+}
+
+/* 분석 결과를 문서 등록 폼에 자동 입력합니다 */
+function applyParsedToRegisterForm(filename) {
+  const p = parseQemsFilename(filename);
+
+  /* 각 필드에 값 채우기 */
+  const setVal = (id, val) => {
+    const el = document.getElementById(id);
+    if (el && val) el.value = val;
+  };
+
+  setVal('rn',    p.docNumber);
+  setVal('rname', p.docName);
+  setVal('rver',  p.version);
+
+  /* 보안등급 선택 */
+  const secEl = document.getElementById('rsec');
+  if (secEl && p.secLevel) secEl.value = String(p.secLevel);
+
+  /* 문서유형 선택 (옵션 목록에 있는 경우만) */
+  const typeEl = document.getElementById('rtype');
+  if (typeEl && p.docType) {
+    for (const opt of typeEl.options) {
+      if (opt.value === p.docType) { typeEl.value = p.docType; break; }
+    }
+  }
+
+  /* 시리즈 선택 (옵션 목록에 있는 경우만) */
+  const serEl = document.getElementById('rseries');
+  if (serEl && p.seriesId) {
+    for (const opt of serEl.options) {
+      if (opt.value === p.seriesId) { serEl.value = p.seriesId; break; }
+    }
+  }
+
+  /* 버전에 따라 단계 자동 설정 */
+  const stageEl = document.getElementById('rstage');
+  if (stageEl) {
+    if (/^Draft$/i.test(p.version))       stageEl.value = 'draft';
+    else if (/^Rev/i.test(p.version))     stageEl.value = 'released';
+    else                                   stageEl.value = 'development';
+  }
+
+  /* 자동입력 완료 안내 토스트 */
+  toast(`✨ "${filename}" 에서 정보를 자동 입력했습니다. 내용을 확인해 주세요.`, '');
 }
 
 /* ── 내비게이션 ─────────────────────────────────────────── */
