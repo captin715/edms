@@ -20,7 +20,7 @@ input, select, textarea { font-family: inherit; font-size: inherit; }
 ══════════════════════════════════════ */
 :root {
   --navy:       #1F3864;
-  --navy-dk:    #152843;h
+  --navy-dk:    #152843;
   --navy-lt:    #2C4F8C;
   --surface:    #FFFFFF;
   --bg:         #EEF0F5;
@@ -1945,9 +1945,10 @@ function parseQemsFilename(filename) {
       result.docName = parts.slice(nameStart).join(' ');
     }
 
-    /* 4. 유형·시리즈 고정 */
+    /* 4. 유형·시리즈 고정 + 버전은 EDMS 등록 기준 Rev 1.00 */
     result.docType  = 'CFSPS';
     result.seriesId = 'CFSPS';
+    result.version  = 'Rev 1.00';  /* CFSPS는 공식 발행 문서 → EDMS 최초 등록 시 Rev 1.00 */
     return result;
   }
 
