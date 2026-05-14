@@ -780,7 +780,8 @@ code { font-family: 'Consolas', monospace; font-size: .92em; }
    ╚══════════════════════════════════════════════════════════╝ */
 
 const SUPABASE_URL = 'https://dvkaqsinhzigqceqqvml.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_nLSaE1b5e6LCGXfmNfsX1Q_S57pr_wR'; /* ← Supabase Dashboard > Settings > API > anon public 키 붙여넣기 */
+const SUPABASE_KEY = 'sb_publishable_nLSaE1b5e6LCGXfmNfsX1Q_S57pr_wR
+'; /* ← Supabase Dashboard > Settings > API > anon public 키 붙여넣기 */
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: {
@@ -1030,9 +1031,16 @@ function recordLog(docId, verId, action) {
 async function uploadFile(file, secLvl, docNum, verStr) {
   const folder  = `P${secLvl}`;
   const ext     = file.name.split('.').pop().toLowerCase();
-  const safeName = `${docNum}_${verStr.replace(/[\s./]/g, '_')}_${Date.now()}.${ext}`;
-  const path    = `${folder}/${safeName}`;
-  const { error } = await sb.storage.from('documents').upload(path, file, { upsert: true });
+
+  /* Storage 경로: 영문·숫자·하이픈·점만 허용
+     한글·특수문자 → 언더스코어(_)로 치환
+     예) CFSPS-1장 → CFSPS-1_  /  Rev 1.00 → Rev_1_00  */
+  const safeNum = docNum.replace(/[^a-zA-Z0-9\-]/g, '_');
+  const safeVer = verStr.replace(/[^a-zA-Z0-9\-\.]/g, '_');
+  const path    = `${folder}/${safeNum}_${safeVer}_${Date.now()}.${ext}`;
+
+  const { error } = await sb.storage
+    .from('documents').upload(path, file, { upsert: true });
   if (error) throw error;
   return path;
 }
