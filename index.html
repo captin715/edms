@@ -1,0 +1,1960 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>뉴월드 EDMS — 전자문서관리시스템</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+/* ══════════════════════════════════════
+   RESET & BASE
+══════════════════════════════════════ */
+*,*::before,*::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-family: '맑은 고딕', 'Malgun Gothic', sans-serif; font-size: 14px; }
+body { background: #EEF0F5; color: #1A202C; min-height: 100vh; }
+button { cursor: pointer; border: none; background: none; font-family: inherit; font-size: inherit; }
+input, select, textarea { font-family: inherit; font-size: inherit; }
+
+/* ══════════════════════════════════════
+   DESIGN TOKENS
+══════════════════════════════════════ */
+:root {
+  --navy:       #1F3864;
+  --navy-dk:    #152843;
+  --navy-lt:    #2C4F8C;
+  --surface:    #FFFFFF;
+  --bg:         #EEF0F5;
+  --border:     #E2E8F0;
+  --text:       #1A202C;
+  --muted:      #718096;
+  --sidebar-w:  228px;
+  --topbar-h:   52px;
+  --shadow-sm:  0 1px 3px rgba(0,0,0,.08);
+
+  /* 보안등급 ① 고대비 컬러 (P4 경고 강조) */
+  --p1-bg: #E8F5E9; --p1-fg: #1B5E20;
+  --p2-bg: #E3F2FD; --p2-fg: #0D47A1;
+  --p3-bg: #FFF3E0; --p3-fg: #BF360C;
+  --p4-bg: #FFCDD2; --p4-fg: #B71C1C;
+
+  /* 상태 */
+  --active-bg:   #E8F5E9; --active-fg:   #1B5E20;
+  --obsolete-bg: #FFEBEE; --obsolete-fg: #B71C1C;
+  --archive-bg:  #ECEFF1; --archive-fg:  #546E7A;
+
+  /* 버전 단계 */
+  --dev-bg:  #E3F2FD; --dev-fg:  #0D47A1;
+  --dft-bg:  #FFFDE7; --dft-fg:  #F57F17;
+  --rel-bg:  #E8F5E9; --rel-fg:  #1B5E20;
+  --obs-bg:  #F5F5F5; --obs-fg:  #9E9E9E;
+}
+
+/* ══════════════════════════════════════
+   APP SHELL LAYOUT
+══════════════════════════════════════ */
+#app { display: flex; min-height: 100vh; }
+
+/* Sidebar */
+.sidebar {
+  width: var(--sidebar-w);
+  min-width: var(--sidebar-w);
+  background: var(--navy);
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+  z-index: 20;
+}
+.sb-logo {
+  padding: 20px 18px 16px;
+  border-bottom: 1px solid rgba(255,255,255,.1);
+}
+.sb-logo-name { color: #fff; font-size: 15px; font-weight: 700; line-height: 1.3; }
+.sb-logo-sub  { color: rgba(255,255,255,.45); font-size: 10px; margin-top: 3px; letter-spacing: .06em; }
+
+.nav-group { padding: 10px 0 4px; }
+.nav-section-label {
+  padding: 6px 18px 4px;
+  color: rgba(255,255,255,.3);
+  font-size: 10px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 18px;
+  color: rgba(255,255,255,.65);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background .14s, color .14s;
+  user-select: none;
+}
+.nav-item:hover  { background: rgba(255,255,255,.08); color: #fff; }
+.nav-item.active { background: rgba(255,255,255,.15); color: #fff; font-weight: 600; }
+.nav-icon        { font-size: 15px; width: 20px; text-align: center; flex-shrink: 0; }
+
+.sb-footer {
+  margin-top: auto;
+  padding: 14px 18px;
+  border-top: 1px solid rgba(255,255,255,.1);
+}
+.user-chip { display: flex; align-items: center; gap: 10px; }
+.user-avatar {
+  width: 30px; height: 30px; border-radius: 50%;
+  background: rgba(255,255,255,.18);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 700; color: #fff; flex-shrink: 0;
+}
+.user-name { font-size: 12px; font-weight: 600; color: #fff; }
+.user-role { font-size: 10px; color: rgba(255,255,255,.45); margin-top: 1px; }
+
+/* Main area */
+.main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+/* Topbar */
+.topbar {
+  height: var(--topbar-h);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.topbar-title { font-size: 15px; font-weight: 700; color: var(--text); }
+.topbar-right  { display: flex; align-items: center; gap: 10px; }
+
+/* Content */
+.content { padding: 24px; flex: 1; }
+
+/* ══════════════════════════════════════
+   COMPONENTS
+══════════════════════════════════════ */
+
+/* Card */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-sm);
+}
+.card-header {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.card-title { font-size: 14px; font-weight: 700; color: var(--text); }
+.card-body  { padding: 20px; }
+
+/* Stat cards */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.stat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 18px 20px;
+  box-shadow: var(--shadow-sm);
+}
+.stat-label { font-size: 11px; color: var(--muted); margin-bottom: 6px; font-weight: 600; letter-spacing: .04em; }
+.stat-value { font-size: 28px; font-weight: 700; color: var(--navy); line-height: 1; }
+.stat-sub   { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: filter .14s, transform .08s;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.btn:active        { transform: scale(.97); }
+.btn-primary       { background: var(--navy); color: #fff; border-color: var(--navy); }
+.btn-primary:hover { filter: brightness(1.12); }
+.btn-outline       { background: #fff; color: var(--navy); border-color: var(--border); }
+.btn-outline:hover { border-color: var(--navy-lt); background: #F5F8FF; }
+.btn-danger        { background: #FFEBEE; color: #B71C1C; border-color: #FFCDD2; }
+.btn-danger:hover  { background: #FFCDD2; }
+.btn-ghost         { background: transparent; color: var(--muted); border-color: transparent; }
+.btn-ghost:hover   { background: var(--bg); color: var(--text); }
+.btn-sm            { padding: 4px 10px; font-size: 12px; }
+.btn-full          { width: 100%; justify-content: center; }
+.btn:disabled      { opacity: .55; cursor: not-allowed; transform: none; }
+
+/* Forms */
+.form-group   { margin-bottom: 16px; }
+.form-label   {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  margin-bottom: 6px;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+.required     { color: #E53935; margin-left: 2px; }
+.form-control {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1.5px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--text);
+  background: #fff;
+  transition: border-color .14s, box-shadow .14s;
+  outline: none;
+}
+.form-control:focus {
+  border-color: var(--navy-lt);
+  box-shadow: 0 0 0 3px rgba(44,79,140,.12);
+}
+.form-control::placeholder { color: #B0BEC5; }
+select.form-control { cursor: pointer; }
+.form-row   { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+
+/* Table */
+.tbl-wrap { overflow-x: auto; }
+.tbl      { width: 100%; border-collapse: collapse; }
+.tbl th {
+  background: #F7F9FF;
+  padding: 10px 14px;
+  text-align: left;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.tbl td {
+  padding: 11px 14px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.tbl tr:last-child td { border-bottom: none; }
+.tbl tr.row-link      { cursor: pointer; }
+.tbl tr.row-link:hover td { background: #F5F8FF; }
+
+/* Badges */
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .02em;
+  white-space: nowrap;
+}
+.bp1 { background: var(--p1-bg); color: var(--p1-fg); }
+.bp2 { background: var(--p2-bg); color: var(--p2-fg); }
+.bp3 { background: var(--p3-bg); color: var(--p3-fg); }
+.bp4 { background: var(--p4-bg); color: var(--p4-fg); border: 1px solid #EF9A9A; }
+
+.b-active   { background: var(--active-bg);   color: var(--active-fg); }
+.b-obsolete { background: var(--obsolete-bg); color: var(--obsolete-fg); }
+.b-archived { background: var(--archive-bg);  color: var(--archive-fg); }
+
+.b-dev { background: var(--dev-bg); color: var(--dev-fg); }
+.b-dft { background: var(--dft-bg); color: var(--dft-fg); }
+.b-rel { background: var(--rel-bg); color: var(--rel-fg); }
+.b-obs { background: var(--obs-bg); color: var(--obs-fg); }
+
+/* Security badge in topbar */
+.sec-topbar { padding: 4px 12px; border-radius: 99px; font-size: 11px; font-weight: 700; }
+
+/* Filter bar */
+.filter-bar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.filter-bar input,
+.filter-bar select {
+  height: 34px;
+  padding: 0 10px;
+  border: 1.5px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+  background: #fff;
+  outline: none;
+}
+.filter-bar input:focus,
+.filter-bar select:focus { border-color: var(--navy-lt); }
+.filter-bar input  { min-width: 220px; }
+.filter-bar select { min-width: 130px; cursor: pointer; }
+
+/* KV Grid */
+.kv { display: grid; grid-template-columns: 110px 1fr; row-gap: 6px; }
+.kv-k { font-size: 11px; font-weight: 700; color: var(--muted); padding: 4px 0; letter-spacing: .03em; }
+.kv-v { font-size: 13px; color: var(--text); padding: 4px 0; word-break: break-all; }
+
+/* Series chip */
+.series-chip {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  background: #EEF2FF;
+  color: #3949AB;
+  letter-spacing: .02em;
+}
+
+/* Divider */
+.divider { height: 1px; background: var(--border); margin: 16px 0; }
+
+/* Section header */
+.sec-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.sec-title { font-size: 15px; font-weight: 700; color: var(--text); }
+
+/* Dropzone */
+.dropzone {
+  border: 2px dashed var(--border);
+  border-radius: 8px;
+  padding: 28px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color .14s, background .14s;
+}
+.dropzone:hover,
+.dropzone.drag-over {
+  border-color: var(--navy-lt);
+  background: #F0F4FF;
+}
+.dropzone-icon  { font-size: 28px; margin-bottom: 8px; opacity: .6; }
+.dropzone-text  { font-size: 13px; color: var(--muted); }
+.dropzone-text strong { color: var(--navy); }
+#r-file-input,
+#v-file-input { display: none; }
+
+/* File preview */
+.file-preview {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: #F7F9FF;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--navy);
+  display: none;
+}
+
+/* Modal */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.modal {
+  background: #fff;
+  border-radius: 10px;
+  width: 580px;
+  max-width: 96vw;
+  box-shadow: 0 24px 64px rgba(0,0,0,.2);
+  max-height: 92vh;
+  overflow-y: auto;
+}
+.modal-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky; top: 0; background: #fff; z-index: 1;
+}
+.modal-title { font-size: 15px; font-weight: 700; }
+.modal-close {
+  width: 28px; height: 28px;
+  border-radius: 5px;
+  background: #f5f5f5;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; font-size: 16px; color: var(--muted);
+}
+.modal-close:hover { background: var(--border); color: var(--text); }
+.modal-body   { padding: 20px; }
+.modal-footer {
+  padding: 14px 20px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* Empty state */
+.empty {
+  text-align: center;
+  padding: 48px 24px;
+  color: var(--muted);
+}
+.empty-icon { font-size: 36px; margin-bottom: 10px; opacity: .35; }
+.empty-text { font-size: 13px; }
+
+/* Misc */
+.mt-16  { margin-top: 16px; }
+.mt-20  { margin-top: 20px; }
+.text-sm   { font-size: 12px; }
+.text-muted { color: var(--muted); }
+code { font-family: 'Consolas', monospace; font-size: .92em; }
+
+/* ══════════════════════════════════════
+   LOGIN SCREEN
+══════════════════════════════════════ */
+#login-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(150deg, var(--navy-dk) 0%, #1a3a7a 60%, #223d87 100%);
+}
+.login-wrap {
+  width: 400px;
+  max-width: 96vw;
+}
+.login-card {
+  background: #fff;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 32px 80px rgba(0,0,0,.32);
+}
+.login-head {
+  background: var(--navy);
+  padding: 36px 40px 28px;
+  text-align: center;
+}
+.login-emblem {
+  width: 48px; height: 48px;
+  background: rgba(255,255,255,.15);
+  border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 24px;
+  margin: 0 auto 14px;
+}
+.login-company { color: rgba(255,255,255,.6); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
+.login-sys     { color: #fff; font-size: 20px; font-weight: 700; margin-top: 4px; }
+.login-sub     { color: rgba(255,255,255,.4); font-size: 11px; margin-top: 4px; }
+.login-body    { padding: 32px 40px 36px; }
+.login-field   { margin-bottom: 18px; }
+.login-label   {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  margin-bottom: 6px;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+/* ① autocomplete="new-password" 는 HTML 속성으로 처리,
+      CSS 강제 차단도 병행 */
+.login-input {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1.5px solid var(--border);
+  border-radius: 7px;
+  font-size: 14px;
+  color: var(--text);
+  outline: none;
+  transition: border-color .14s, box-shadow .14s;
+  background: #fff;
+}
+.login-input:focus {
+  border-color: var(--navy-lt);
+  box-shadow: 0 0 0 3px rgba(44,79,140,.14);
+}
+.login-input::placeholder { color: #C5CDD8; }
+
+/* ── 비밀번호 표시 버튼 ─────────────────────────────────
+   .pw-wrap  : 입력창과 버튼을 함께 묶는 감싸개(wrapper)
+   .pw-toggle: 눈 모양 버튼 — 마우스를 올리면 비밀번호 표시 */
+.pw-wrap { position: relative; }
+.pw-wrap .login-input { padding-right: 50px; }
+.pw-toggle {
+  position: absolute;        /* 입력창 위에 겹쳐서 배치 */
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 28px;
+  border: 1.5px solid var(--border);
+  border-radius: 6px;
+  background: #F8FAFB;
+  color: var(--muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color .14s, color .14s, background .14s, box-shadow .14s;
+  user-select: none;
+  flex-shrink: 0;
+}
+/* 마우스가 버튼 위에 올라왔을 때 스타일 */
+.pw-toggle:hover {
+  border-color: var(--navy-lt);
+  color: var(--navy);
+  background: #EEF3FF;
+  box-shadow: 0 0 0 3px rgba(44,79,140,.1);
+}
+.pw-toggle svg { pointer-events: none; }  /* SVG 자체는 마우스 이벤트 무시 */
+
+/* ── 이메일 기억하기 체크박스 ───────────────────────────── */
+.remember-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 0 18px;
+}
+.remember-check {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--navy);  /* 체크 시 네이비 색상 */
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.remember-label {
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+/* ── 오류 메시지 (원인 안내 포함) ──────────────────────── */
+.login-error {
+  margin-top: 14px;
+  padding: 12px 14px;
+  background: #FFEBEE;
+  border: 1px solid #FFCDD2;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #B71C1C;
+  line-height: 1.6;
+}
+.login-error-title  { font-weight: 700; margin-bottom: 4px; display: block; }
+.login-error-hint   {
+  color: #4527A0;
+  background: #EDE7F6;
+  border: 1px solid #B39DDB;
+  border-radius: 4px;
+  padding: 7px 10px;
+  margin-top: 8px;
+  font-size: 11px;
+  line-height: 1.7;
+}
+
+.login-btn {
+  width: 100%;
+  margin-top: 6px;
+  padding: 12px;
+  border-radius: 7px;
+  background: var(--navy);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  border: none;
+  transition: filter .14s;
+}
+.login-btn:hover    { filter: brightness(1.12); }
+.login-btn:disabled { opacity: .55; cursor: not-allowed; filter: none; }
+.login-error {
+  margin-top: 14px;
+  padding: 10px 14px;
+  background: #FFEBEE;
+  border: 1px solid #FFCDD2;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #B71C1C;
+}
+.login-notice {
+  margin-top: 16px;
+  text-align: center;
+  font-size: 11px;
+  color: #C5CDD8;
+}
+
+/* ══════════════════════════════════════
+   TOAST
+══════════════════════════════════════ */
+#toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 999;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+.toast-item {
+  background: #1A202C;
+  color: #fff;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.2);
+  animation: toastIn .2s ease;
+  max-width: 300px;
+}
+.toast-success { background: #1B5E20; }
+.toast-error   { background: #B71C1C; }
+@keyframes toastIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ══════════════════════════════════════
+   LOADING SKELETON
+══════════════════════════════════════ */
+.skeleton {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+  border-radius: 4px;
+  display: inline-block;
+}
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ══════════════════════════════════════
+   2-COLUMN GRID
+══════════════════════════════════════ */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.grid-2-rev { display: grid; grid-template-columns: 1fr 320px; gap: 20px; align-items: start; }
+</style>
+</head>
+<body>
+
+<div id="app"><!-- JS 렌더링 영역 --></div>
+<div id="toast"></div>
+
+<script>
+'use strict';
+
+/* ╔══════════════════════════════════════════════════════════╗
+   ║  LAYER 1 · CONFIG & CONSTANTS                           ║
+   ╚══════════════════════════════════════════════════════════╝ */
+
+const SUPABASE_URL = 'https://dvkaqsinhzigqceqqvml.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_nLSaE1b5e6LCGXfmNfsX1Q_S57pr_wR'; /* ← Supabase Dashboard > Settings > API > anon public 키 붙여넣기 */
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: {
+    persistSession: false,  /* false = 로그인 정보를 브라우저에 저장하지 않음
+                               → 파일을 새로 열거나 탭을 닫으면 반드시 재로그인 필요
+                               → P4 극비 문서 보호를 위한 필수 보안 설정 */
+    autoRefreshToken: true, /* 같은 탭 안에서 작업 중일 때는 자동 연장 허용 */
+  }
+});
+
+/* 네비게이션 구조 */
+const NAV_ITEMS = [
+  { id: 'dashboard', icon: '📊', label: '대시보드',    group: '메인' },
+  { id: 'documents', icon: '📄', label: '문서 목록',   group: '문서 관리' },
+  { id: 'register',  icon: '➕', label: '문서 등록',   group: '문서 관리' },
+  { id: 'approvals', icon: '✅', label: '결재 현황',   group: '결재' },
+  { id: 'logs',      icon: '🔍', label: '접근 로그',   group: '감사·보안' },
+];
+
+/* 시리즈 → 한글명 맵 */
+const SERIES_LABEL = {
+  'G-series': '공통관리',   'C-series': '공사관리',     'Q-series': '품질·검사',
+  'E-series': '환경관리',   'S-series': '전략기획',     'R-series': '규제대응',
+  'W-M':      '통합경영매뉴얼', 'W-EM': '장비매뉴얼', 'W-SM': '서비스매뉴얼',
+  'CFSPS':    'CFSPS 표준',
+};
+
+/* ② 보안등급 설정 — CSS 클래스 연동 */
+const SEC = {
+  1: { label: 'P1 공개',   cls: 'bp1', topCls: 'bp1' },
+  2: { label: 'P2 내부',   cls: 'bp2', topCls: 'bp2' },
+  3: { label: 'P3 대외비', cls: 'bp3', topCls: 'bp3' },
+  4: { label: 'P4 극비',   cls: 'bp4', topCls: 'bp4' },
+};
+
+const STATUS = {
+  active:   { label: '활성', cls: 'b-active' },
+  obsolete: { label: '폐기', cls: 'b-obsolete' },
+  archived: { label: '보관', cls: 'b-archived' },
+};
+
+const STAGE = {
+  development: { label: '개발 중', cls: 'b-dev' },
+  draft:       { label: 'Draft',   cls: 'b-dft' },
+  released:    { label: '등록본',  cls: 'b-rel' },
+  obsolete:    { label: '폐기',    cls: 'b-obs' },
+};
+
+const DOC_TYPES  = ['W-P','W-GL','W-SOP','W-WI','W-FR','W-QS','W-M','W-EM','W-SM','CFSPS'];
+const ACTION_KO  = { view:'열람', download:'다운로드', upload:'업로드', approve:'승인', reject:'반려', search:'검색' };
+
+/* ╔══════════════════════════════════════════════════════════╗
+   ║  LAYER 2 · GLOBAL STATE                                 ║
+   ╚══════════════════════════════════════════════════════════╝ */
+
+/*
+ * S.profile 은 renderApp() 호출 전 반드시 로드 완료 (② 타이밍 픽스).
+ * 모든 데이터 로드는 LAYER 3 함수에서만 수행.
+ */
+const S = {
+  user:    null,          // Supabase Auth user
+  profile: null,          // user_profiles 행 — ② 항상 보장
+  view:    'dashboard',
+  params:  {},
+
+  docs:     [],
+  series:   [],
+  selDoc:   null,
+  selVers:  [],
+  approvals:[],
+  logs:     [],
+
+  filters: { series: '', security: '', status: 'active', search: '' },
+  stats:   { total: 0, active: 0, pending: 0, monthly: 0 },
+};
+
+/* ╔══════════════════════════════════════════════════════════╗
+   ║  LAYER 3 · SUPABASE OPERATIONS                          ║
+   ╚══════════════════════════════════════════════════════════╝ */
+
+/* ── 인증 ───────────────────────────────────────────────── */
+async function signIn(email, pw) {
+  const { data, error } = await sb.auth.signInWithPassword({ email, password: pw });
+  if (error) throw error;
+  return data;
+}
+
+async function doSignOut() {
+  await sb.auth.signOut();
+  S.user = null; S.profile = null;
+  renderLogin();
+}
+
+/* ── 프로필 로드 (② 핵심: 렌더링 전 반드시 완료) ─────── */
+async function loadProfile(uid) {
+  const { data, error } = await sb
+    .from('user_profiles')
+    .select('*')
+    .eq('id', uid)
+    .single();
+  if (error) throw error;
+  S.profile = data;     /* 이후 모든 renderXxx() 에서 S.profile 안전 접근 */
+}
+
+/* ── 문서 목록 ──────────────────────────────────────────── */
+async function loadDocuments() {
+  let q = sb.from('documents').select('*');
+  const f = S.filters;
+  if (f.series)   q = q.eq('series_id', f.series);
+  if (f.security) q = q.eq('security_level', parseInt(f.security));
+  if (f.status)   q = q.eq('status', f.status);
+  if (f.search) {
+    q = q.or(`doc_number.ilike.%${f.search}%,doc_name.ilike.%${f.search}%`);
+  }
+  q = q.order('updated_at', { ascending: false }).limit(300);
+  const { data, error } = await q;
+  if (error) throw error;
+  S.docs = data || [];
+}
+
+/* ── 문서 상세 + 버전 이력 ─────────────────────────────── */
+async function loadDocDetail(docId) {
+  const [docRes, verRes] = await Promise.all([
+    sb.from('documents').select('*').eq('id', docId).single(),
+    sb.from('document_versions')
+      .select('*')
+      .eq('document_id', docId)
+      .order('created_at', { ascending: false }),
+  ]);
+  if (docRes.error) throw docRes.error;
+  S.selDoc  = docRes.data;
+  S.selVers = verRes.data || [];
+}
+
+/* ── 통계 ────────────────────────────────────────────────── */
+async function loadStats() {
+  const firstOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
+  const [r1, r2, r3, r4] = await Promise.all([
+    sb.from('documents').select('id', { count: 'exact', head: true }),
+    sb.from('documents').select('id', { count: 'exact', head: true }).eq('status', 'active'),
+    sb.from('documents').select('id', { count: 'exact', head: true }).gte('created_at', firstOfMonth),
+    sb.from('approval_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+  ]);
+  S.stats = {
+    total:   r1.count || 0,
+    active:  r2.count || 0,
+    monthly: r3.count || 0,
+    pending: r4.count || 0,
+  };
+}
+
+/* ── 시리즈 목록 ────────────────────────────────────────── */
+async function loadSeries() {
+  const { data } = await sb.from('document_series').select('*').order('id');
+  S.series = data || [];
+}
+
+/* ── 결재 목록 (내 처리 필요 단계) ────────────────────── */
+async function loadApprovals() {
+  const { data, error } = await sb
+    .from('approval_steps')
+    .select(`
+      id, step_order, step_name, status, created_at,
+      approval_requests (
+        id, status, created_at,
+        document_versions (
+          version_string,
+          documents ( doc_number, doc_name, security_level )
+        )
+      )
+    `)
+    .eq('assignee_id', S.user.id)
+    .eq('status', 'pending')
+    .order('created_at');
+  if (error) throw error;
+  S.approvals = data || [];
+}
+
+/* ── 접근 로그 ──────────────────────────────────────────── */
+async function loadLogs() {
+  const isMgr = S.profile && ['대표이사','품질팀장'].includes(S.profile.role);
+  let q = sb.from('access_logs')
+    .select(`
+      id, action, ip_address, created_at,
+      documents ( doc_number, doc_name ),
+      user_profiles ( name )
+    `)
+    .order('created_at', { ascending: false })
+    .limit(100);
+  if (!isMgr) q = q.eq('user_id', S.user.id);
+  const { data, error } = await q;
+  if (error) throw error;
+  S.logs = data || [];
+}
+
+/* ── 접근 로그 기록 ─────────────────────────────────────── */
+function recordLog(docId, verId, action) {
+  if (!S.user) return;
+  sb.from('access_logs').insert({
+    user_id: S.user.id,
+    document_id: docId || null,
+    version_id: verId || null,
+    action,
+  }).then();  /* fire-and-forget */
+}
+
+/* ── Storage 업로드 ─────────────────────────────────────── */
+async function uploadFile(file, secLvl, docNum, verStr) {
+  const folder  = `P${secLvl}`;
+  const ext     = file.name.split('.').pop().toLowerCase();
+  const safeName = `${docNum}_${verStr.replace(/[\s./]/g, '_')}_${Date.now()}.${ext}`;
+  const path    = `${folder}/${safeName}`;
+  const { error } = await sb.storage.from('documents').upload(path, file, { upsert: true });
+  if (error) throw error;
+  return path;
+}
+
+/* ── Storage 서명 URL 생성 + 다운로드 ─────────────────── */
+async function downloadVersion(filePath, fileName, docId, verId) {
+  if (!filePath) { toast('저장된 파일이 없습니다.', 'error'); return; }
+  const { data, error } = await sb.storage.from('documents').createSignedUrl(filePath, 120);
+  if (error) { toast('다운로드 링크 생성 실패: ' + error.message, 'error'); return; }
+  const a = document.createElement('a');
+  a.href = data.signedUrl;
+  a.download = fileName || 'document';
+  a.click();
+  recordLog(docId, verId, 'download');
+}
+
+/* ── 결재 단계 처리 ─────────────────────────────────────── */
+async function processApprovalStep(stepId, decision) {
+  let comment = null;
+  if (decision === 'rejected') {
+    comment = prompt('반려 사유를 입력하세요:');
+    if (comment === null) return;
+  }
+  try {
+    await sb.from('approval_steps').update({
+      status: decision,
+      comment: comment || null,
+      acted_at: new Date().toISOString(),
+    }).eq('id', stepId);
+    toast(decision === 'approved' ? '✅ 승인 처리 완료' : '❌ 반려 처리 완료', 'success');
+    await loadApprovals();
+    renderView();
+  } catch(e) {
+    toast('처리 실패: ' + e.message, 'error');
+  }
+}
+
+/* ╔══════════════════════════════════════════════════════════╗
+   ║  LAYER 4 · RENDER FUNCTIONS                             ║
+   ╚══════════════════════════════════════════════════════════╝ */
+
+/* ── 유틸리티 헬퍼 ──────────────────────────────────────── */
+const fmtD  = ts => ts ? new Date(ts).toLocaleDateString('ko-KR',  { year:'numeric', month:'2-digit', day:'2-digit' }) : '-';
+const fmtDT = ts => ts ? new Date(ts).toLocaleString('ko-KR', { year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' }) : '-';
+
+function secBadge(lvl) {
+  const s = SEC[lvl];
+  return s ? `<span class="badge ${s.cls}">${s.label}</span>` : '<span class="text-muted">-</span>';
+}
+function statusBadge(st)  { const s = STATUS[st]; return s ? `<span class="badge ${s.cls}">${s.label}</span>` : `<span>${st||'-'}</span>`; }
+function stageBadge(st)   { const s = STAGE[st];  return s ? `<span class="badge ${s.cls}">${s.label}</span>` : `<span>${st||'-'}</span>`; }
+
+/* ── 로그인 화면 ────────────────────────────────────────── */
+function renderLogin() {
+  document.getElementById('app').innerHTML = `
+  <div id="login-screen">
+    <div class="login-wrap">
+      <div class="login-card">
+        <div class="login-head">
+          <div class="login-emblem">📋</div>
+          <div class="login-company">주식회사 뉴월드</div>
+          <div class="login-sys">전자문서관리시스템</div>
+          <div class="login-sub">Electronic Document Management System</div>
+        </div>
+        <div class="login-body">
+          <div class="login-field">
+            <label class="login-label" for="li-email">이메일</label>
+            <input
+              id="li-email" type="email"
+              class="login-input"
+              placeholder="name@newworldkr.com"
+              autocomplete="new-password"
+              spellcheck="false"
+            >
+          </div>
+          <div class="login-field">
+            <label class="login-label" for="li-pw">비밀번호</label>
+            <!-- pw-wrap : 입력창과 버튼을 하나의 박스처럼 묶어줍니다 -->
+            <div class="pw-wrap">
+              <input
+                id="li-pw" type="password"
+                class="login-input"
+                placeholder="••••••••"
+                autocomplete="new-password"
+              >
+              <!--
+                비밀번호 확인 버튼
+                · onmouseenter : 마우스가 버튼 위에 올라오면 → type을 text로 바꿔 비밀번호를 보여줌
+                · onmouseleave : 마우스가 버튼에서 벗어나면  → type을 password로 되돌려 숨김
+                · title        : 마우스를 버튼에 잠깐 멈추면 뜨는 안내 문구
+              -->
+              <button
+                type="button"
+                class="pw-toggle"
+                title="마우스를 올리는 동안 비밀번호가 표시됩니다"
+                aria-label="비밀번호 확인"
+                onmouseenter="document.getElementById('li-pw').type='text'"
+                onmouseleave="document.getElementById('li-pw').type='password'"
+              >
+                <!-- 눈(eye) 모양 SVG 아이콘 -->
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                  <circle cx="12" cy="12" r="3"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+          <!-- 이메일 기억하기 체크박스
+               체크하면 이 컴퓨터에 이메일 주소를 저장해 두었다가
+               다음 접속 시 자동으로 입력해 줍니다 -->
+          <div class="remember-row">
+            <input type="checkbox" id="li-remember" class="remember-check">
+            <label for="li-remember" class="remember-label">이메일 기억하기</label>
+          </div>
+          <button class="login-btn" id="li-btn">로그인</button>
+          <!-- 오류 메시지 영역: 로그인 실패 시 원인과 해결 방법을 함께 안내 -->
+          <div id="li-err" style="display:none" class="login-error"></div>
+          <div class="login-notice">접근 기록은 감사 목적으로 자동 저장됩니다.</div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+
+  const emailEl    = document.getElementById('li-email');
+  const pwEl       = document.getElementById('li-pw');
+  const btnEl      = document.getElementById('li-btn');
+  const errEl      = document.getElementById('li-err');
+  const rememberEl = document.getElementById('li-remember');
+
+  /* ── 저장된 이메일 불러오기 ──────────────────────────────
+     localStorage : 이 컴퓨터(브라우저)에만 저장되는 작은 메모장
+     이전에 "이메일 기억하기"를 체크했다면 여기서 꺼내서 입력창에 채웁니다 */
+  const savedEmail = localStorage.getItem('edms_remember_email');
+  if (savedEmail) {
+    emailEl.value      = savedEmail;
+    rememberEl.checked = true;
+  }
+
+  /* ── 오류 메시지 표시 함수 ──────────────────────────────
+     단순 텍스트 대신 HTML을 넣어 원인과 해결 방법을 함께 안내합니다 */
+  const showErr = (title, hint = '') => {
+    errEl.innerHTML = `
+      <span class="login-error-title">⚠️ ${title}</span>
+      ${hint ? `<div class="login-error-hint">${hint}</div>` : ''}`;
+    errEl.style.display = 'block';
+  };
+
+  /* ── 로그인 실행 함수 ──────────────────────────────────── */
+  const doLogin = async () => {
+    const email = emailEl.value.trim();
+    const pw    = pwEl.value;
+
+    if (!email || !pw) {
+      showErr('이메일과 비밀번호를 모두 입력해 주세요.');
+      return;
+    }
+
+    btnEl.disabled = true; btnEl.textContent = '로그인 중…';
+
+    try {
+      const result = await signIn(email, pw);  /* signIn이 { user, session } 을 반환 */
+      S.user = result.user;
+
+      /* 이메일 기억하기 처리
+         · 체크된 경우  → localStorage 에 이메일 저장
+         · 체크 해제 시 → 저장된 이메일 삭제 */
+      if (rememberEl.checked) {
+        localStorage.setItem('edms_remember_email', email);
+      } else {
+        localStorage.removeItem('edms_remember_email');
+      }
+
+      /* ② 프로필 먼저 로드 완료 → 나머지 병렬 → 화면 렌더링 */
+      await loadProfile(S.user.id);
+      await Promise.all([ loadStats(), loadSeries(), loadDocuments() ]);
+      renderApp();
+
+    } catch(e) {
+      /* ── 오류 종류별 안내 메시지 ──────────────────────────
+         오류 메시지 원문(영어)을 보고 원인을 파악해서 한국어로 안내합니다 */
+      let title, hint;
+
+      if (e.message?.includes('Invalid login credentials')) {
+        /* 가장 흔한 경우: 이메일·비밀번호 불일치 또는 계정 미생성 */
+        title = '이메일 또는 비밀번호가 올바르지 않습니다.';
+        hint  = `아래 순서로 확인해 주세요.<br>
+                 1️⃣ 이메일 주소에 오타가 없는지 확인<br>
+                 2️⃣ Supabase 대시보드 → Authentication → Users 에서<br>
+                 &nbsp;&nbsp;&nbsp;이 이메일로 계정이 생성되어 있는지 확인<br>
+                 3️⃣ 계정이 없다면 "Add user" 로 새로 만들어야 합니다`;
+      } else if (e.message?.includes('API key') || e.message?.includes('apikey') || e.message?.includes('JWT')) {
+        /* SUPABASE_KEY 가 아직 기본값이거나 잘못 입력된 경우 */
+        title = '시스템 설정 오류: API 키가 올바르지 않습니다.';
+        hint  = `index.html 파일 안의 SUPABASE_KEY 값을 확인해 주세요.<br>
+                 Supabase 대시보드 → Settings → API → anon public 키를<br>
+                 복사해서 'YOUR_SUPABASE_ANON_KEY' 자리에 붙여넣어야 합니다.`;
+      } else if (e.message?.includes('Email not confirmed')) {
+        /* 이메일 인증을 아직 하지 않은 경우 */
+        title = '이메일 인증이 완료되지 않았습니다.';
+        hint  = `Supabase 대시보드 → Authentication → Users 에서<br>
+                 해당 계정을 찾아 "Confirm user" 버튼을 클릭하거나,<br>
+                 계정 생성 시 "Auto Confirm User" 옵션을 켜 주세요.`;
+      } else if (e.message?.toLowerCase().includes('fetch') || e.message?.toLowerCase().includes('network')) {
+        /* 인터넷 연결 문제 */
+        title = '인터넷 연결을 확인해 주세요.';
+        hint  = `네트워크 상태를 확인하거나 잠시 후 다시 시도해 주세요.`;
+      } else {
+        /* 그 외 예상치 못한 오류: 원문도 함께 표시 */
+        title = '로그인 중 오류가 발생했습니다.';
+        hint  = `오류 내용: ${e.message || '알 수 없는 오류'}<br>
+                 이 내용을 관리자에게 전달해 주세요.`;
+      }
+
+      showErr(title, hint);
+      btnEl.disabled = false; btnEl.textContent = '로그인';
+    }
+  };
+
+  btnEl.addEventListener('click', doLogin);
+  pwEl.addEventListener('keydown', e => e.key === 'Enter' && doLogin());
+}
+
+/* ── 앱 셸 (사이드바 + 탑바 + 콘텐츠 영역) ─────────────── */
+function renderApp() {
+  const p = S.profile; /* ② 여기서는 항상 non-null */
+
+  /* 사이드바 네비게이션 HTML */
+  let navHtml = '';
+  let lastGroup = '';
+  for (const n of NAV_ITEMS) {
+    if (n.group !== lastGroup) {
+      navHtml += `<div class="nav-section-label">${n.group}</div>`;
+      lastGroup = n.group;
+    }
+    navHtml += `
+    <div class="nav-item${S.view === n.id ? ' active' : ''}" data-view="${n.id}">
+      <span class="nav-icon">${n.icon}</span>${n.label}
+    </div>`;
+  }
+
+  const secCfg   = SEC[p?.security_level] || SEC[2];
+  const initials = p?.name?.slice(0, 1) || '?';
+  const viewTitle = {
+    dashboard: '대시보드', documents: '문서 목록', register: '문서 등록',
+    doc_detail: '문서 상세', approvals: '결재 현황', logs: '접근 로그',
+  }[S.view] || '';
+
+  document.getElementById('app').innerHTML = `
+  <div class="sidebar">
+    <div class="sb-logo">
+      <div class="sb-logo-name">🏢 뉴월드 EDMS</div>
+      <div class="sb-logo-sub">전자문서관리시스템</div>
+    </div>
+    <div class="nav-group">${navHtml}</div>
+    <div class="sb-footer">
+      <div class="user-chip">
+        <div class="user-avatar">${initials}</div>
+        <div>
+          <div class="user-name">${p?.name || '사용자'}</div>
+          <div class="user-role">${p?.role || ''}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="topbar">
+      <div class="topbar-title">${viewTitle}</div>
+      <div class="topbar-right">
+        <span class="badge sec-topbar ${secCfg.topCls}">${secCfg.label}</span>
+        <button class="btn btn-outline btn-sm" id="logout-btn">로그아웃</button>
+      </div>
+    </div>
+    <div class="content" id="vc"><!-- view content --></div>
+  </div>`;
+
+  /* 이벤트: 사이드바 네비 */
+  document.querySelectorAll('[data-view]').forEach(el =>
+    el.addEventListener('click', () => navigate(el.dataset.view))
+  );
+  /* 이벤트: 로그아웃 */
+  document.getElementById('logout-btn').addEventListener('click', doSignOut);
+
+  renderView();
+}
+
+/* ── 뷰 라우터 ──────────────────────────────────────────── */
+function renderView() {
+  ({
+    dashboard:  renderDashboard,
+    documents:  renderDocuments,
+    register:   renderRegister,
+    doc_detail: renderDocDetail,
+    approvals:  renderApprovals,
+    logs:       renderLogs,
+  }[S.view] || renderDashboard)();
+}
+
+/* ── 대시보드 ────────────────────────────────────────────── */
+function renderDashboard() {
+  const p   = S.profile; /* ② 항상 존재 */
+  const vc  = document.getElementById('vc');
+
+  vc.innerHTML = `
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-label">전체 문서</div>
+      <div class="stat-value">${S.stats.total.toLocaleString()}</div>
+      <div class="stat-sub">QEMS + CFSPS</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">활성 문서</div>
+      <div class="stat-value">${S.stats.active.toLocaleString()}</div>
+      <div class="stat-sub">현행 등록본</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">결재 대기</div>
+      <div class="stat-value" style="color:${S.stats.pending > 0 ? '#BF360C' : '#1B5E20'}">${S.stats.pending}</div>
+      <div class="stat-sub">내 처리 필요</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">${new Date().getMonth() + 1}월 등록</div>
+      <div class="stat-value">${S.stats.monthly}</div>
+      <div class="stat-sub">이번 달 신규</div>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <!-- 내 정보 카드 -->
+    <div class="card">
+      <div class="card-header"><span class="card-title">🙋 내 계정 정보</span></div>
+      <div class="card-body">
+        <div class="kv">
+          <div class="kv-k">이름</div>
+          <div class="kv-v" style="font-weight:600">${p?.name || '-'}</div>
+          <div class="kv-k">역할</div>
+          <div class="kv-v">${p?.role || '-'}</div>
+          <div class="kv-k">부서</div>
+          <div class="kv-v">${p?.department || '-'}</div>
+          <div class="kv-k">보안등급</div>
+          <div class="kv-v">${secBadge(p?.security_level)}</div>
+          <div class="kv-k">이메일</div>
+          <div class="kv-v" style="font-size:12px">${S.user?.email || '-'}</div>
+        </div>
+        <div class="divider"></div>
+        <div class="text-sm text-muted">
+          ⚡ 접근 가능 등급:
+          ${[1,2,3,4].filter(l => l <= (p?.security_level || 0)).map(l => `<span class="badge ${SEC[l].cls}">${SEC[l].label}</span>`).join(' ')}
+        </div>
+      </div>
+    </div>
+
+    <!-- 시리즈 현황 -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">📁 문서 시리즈</span>
+        <button class="btn btn-outline btn-sm" onclick="navigate('documents')">목록 보기</button>
+      </div>
+      <div class="card-body" style="padding:0">
+        <table class="tbl">
+          <thead><tr><th>시리즈</th><th>설명</th></tr></thead>
+          <tbody>
+            ${S.series.map(s => `
+            <tr class="row-link" onclick="filterAndGo('${s.id}')">
+              <td><span class="series-chip">${s.id}</span></td>
+              <td class="text-muted" style="font-size:12px">${s.name_ko}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- 최근 문서 -->
+  <div class="card mt-20">
+    <div class="card-header">
+      <span class="card-title">📄 최근 등록·수정 문서</span>
+      <button class="btn btn-outline btn-sm" onclick="navigate('documents')">전체 보기</button>
+    </div>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr>
+          <th>문서번호</th><th>문서명</th><th>시리즈</th>
+          <th>보안등급</th><th>상태</th><th>최종수정</th>
+        </tr></thead>
+        <tbody>
+          ${S.docs.slice(0, 10).map(d => `
+          <tr class="row-link" onclick="gotoDoc('${d.id}')">
+            <td><code>${d.doc_number}</code></td>
+            <td>${d.doc_name}</td>
+            <td><span class="series-chip">${d.series_id || '-'}</span></td>
+            <td>${secBadge(d.security_level)}</td>
+            <td>${statusBadge(d.status)}</td>
+            <td class="text-muted text-sm">${fmtD(d.updated_at)}</td>
+          </tr>`).join('') ||
+          '<tr><td colspan="6"><div class="empty"><div class="empty-icon">📂</div><div class="empty-text">등록된 문서가 없습니다</div></div></td></tr>'}
+        </tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
+/* ── 문서 목록 ──────────────────────────────────────────── */
+function renderDocuments() {
+  const vc = document.getElementById('vc');
+  vc.innerHTML = `
+  <div class="sec-head">
+    <div class="sec-title">문서 목록 <span class="text-muted text-sm">(${S.docs.length}건)</span></div>
+    <button class="btn btn-primary btn-sm" onclick="navigate('register')">➕ 신규 등록</button>
+  </div>
+
+  <div class="filter-bar">
+    <input type="search" id="fs" placeholder="🔍  문서번호 또는 문서명" value="${S.filters.search}" autocomplete="off">
+    <select id="fseries">
+      <option value="">전체 시리즈</option>
+      ${S.series.map(s => `<option value="${s.id}"${S.filters.series===s.id?' selected':''}>${s.id} — ${s.name_ko}</option>`).join('')}
+    </select>
+    <select id="fsec">
+      <option value="">전체 보안등급</option>
+      ${[1,2,3,4].map(l => `<option value="${l}"${S.filters.security==l?' selected':''}>${SEC[l].label}</option>`).join('')}
+    </select>
+    <select id="fstat">
+      <option value="">전체 상태</option>
+      ${Object.entries(STATUS).map(([k,v]) => `<option value="${k}"${S.filters.status===k?' selected':''}>${v.label}</option>`).join('')}
+    </select>
+    <button class="btn btn-primary btn-sm" id="fa-btn">검색</button>
+    <button class="btn btn-ghost btn-sm" id="fr-btn">초기화</button>
+  </div>
+
+  <div class="card">
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr>
+          <th style="width:155px">문서번호</th>
+          <th>문서명</th>
+          <th style="width:105px">시리즈</th>
+          <th style="width:70px">유형</th>
+          <th style="width:95px">보안등급</th>
+          <th style="width:80px">상태</th>
+          <th style="width:90px">최종수정</th>
+        </tr></thead>
+        <tbody id="doc-tbody">${buildDocRows()}</tbody>
+      </table>
+    </div>
+  </div>`;
+
+  document.getElementById('fa-btn').addEventListener('click', async () => {
+    S.filters.search   = document.getElementById('fs').value.trim();
+    S.filters.series   = document.getElementById('fseries').value;
+    S.filters.security = document.getElementById('fsec').value;
+    S.filters.status   = document.getElementById('fstat').value;
+    document.getElementById('doc-tbody').innerHTML =
+      '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--muted)">검색 중…</td></tr>';
+    await loadDocuments();
+    document.getElementById('doc-tbody').innerHTML = buildDocRows();
+  });
+
+  document.getElementById('fr-btn').addEventListener('click', async () => {
+    S.filters = { series: '', security: '', status: 'active', search: '' };
+    await loadDocuments();
+    renderDocuments();
+  });
+
+  document.getElementById('fs').addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('fa-btn').click();
+  });
+}
+
+function buildDocRows() {
+  if (!S.docs.length) return `
+    <tr><td colspan="7">
+      <div class="empty">
+        <div class="empty-icon">📂</div>
+        <div class="empty-text">검색 결과가 없습니다</div>
+      </div>
+    </td></tr>`;
+  return S.docs.map(d => `
+  <tr class="row-link" onclick="gotoDoc('${d.id}')">
+    <td><code>${d.doc_number}</code></td>
+    <td>${d.doc_name}</td>
+    <td><span class="series-chip">${d.series_id || '-'}</span></td>
+    <td class="text-muted text-sm">${d.doc_type || '-'}</td>
+    <td>${secBadge(d.security_level)}</td>
+    <td>${statusBadge(d.status)}</td>
+    <td class="text-muted text-sm">${fmtD(d.updated_at)}</td>
+  </tr>`).join('');
+}
+
+/* ── 문서 상세 ──────────────────────────────────────────── */
+function renderDocDetail() {
+  const doc = S.selDoc;
+  if (!doc) { navigate('documents'); return; }
+  const vc = document.getElementById('vc');
+
+  vc.innerHTML = `
+  <div style="margin-bottom:16px">
+    <button class="btn btn-outline btn-sm" onclick="navigate('documents')">← 목록으로</button>
+  </div>
+
+  <div class="grid-2-rev">
+    <div>
+      <!-- 기본정보 -->
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header">
+          <span class="card-title">📄 문서 기본정보</span>
+          <div style="display:flex;gap:6px;align-items:center">
+            ${secBadge(doc.security_level)}
+            ${statusBadge(doc.status)}
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="kv">
+            <div class="kv-k">문서번호</div>
+            <div class="kv-v"><code style="font-size:13px">${doc.doc_number}</code></div>
+            <div class="kv-k">문서명</div>
+            <div class="kv-v" style="font-weight:700;font-size:14px">${doc.doc_name}</div>
+            ${doc.doc_name_en ? `<div class="kv-k">영문명</div><div class="kv-v text-muted">${doc.doc_name_en}</div>` : ''}
+            <div class="kv-k">시리즈</div>
+            <div class="kv-v">
+              <span class="series-chip">${doc.series_id || '-'}</span>
+              <span class="text-muted text-sm" style="margin-left:6px">${SERIES_LABEL[doc.series_id] || ''}</span>
+            </div>
+            <div class="kv-k">문서 유형</div>
+            <div class="kv-v">${doc.doc_type || '-'}</div>
+            <div class="kv-k">주관 부서</div>
+            <div class="kv-v">${doc.department || '-'}</div>
+            <div class="kv-k">상위 문서</div>
+            <div class="kv-v">${doc.parent_doc_number ? `<code>${doc.parent_doc_number}</code>` : '-'}</div>
+            <div class="kv-k">등록일</div>
+            <div class="kv-v text-muted text-sm">${fmtDT(doc.created_at)}</div>
+            <div class="kv-k">최종수정</div>
+            <div class="kv-v text-muted text-sm">${fmtDT(doc.updated_at)}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 버전 이력 -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">🕓 버전 이력 (${S.selVers.length}건)</span>
+          <button class="btn btn-primary btn-sm" id="open-ver-modal">➕ 새 버전</button>
+        </div>
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead><tr>
+              <th style="width:90px">버전</th>
+              <th style="width:85px">단계</th>
+              <th>파일</th>
+              <th>개정 내용</th>
+              <th style="width:80px">등록일</th>
+            </tr></thead>
+            <tbody>
+              ${S.selVers.length ? S.selVers.map(v => `
+              <tr>
+                <td style="font-weight:700">${v.version_string}</td>
+                <td>${stageBadge(v.version_stage)}</td>
+                <td>
+                  ${v.file_path
+                    ? `<button class="btn btn-outline btn-sm"
+                         onclick="downloadVersion('${v.file_path}','${(v.file_name||'').replace(/'/g,"\\'")}','${doc.id}','${v.id}')">
+                         ⬇ ${v.file_name || '다운로드'}</button>`
+                    : '<span class="text-muted text-sm">파일 없음</span>'}
+                </td>
+                <td class="text-muted text-sm">${v.revision_content || '-'}</td>
+                <td class="text-muted text-sm">${fmtD(v.created_at)}</td>
+              </tr>`).join('') :
+              '<tr><td colspan="5"><div class="empty"><div class="empty-icon">📋</div><div class="empty-text">버전 이력이 없습니다</div></div></td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- 오른쪽 패널 -->
+    <div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">⚡ 작업</span></div>
+        <div class="card-body" style="display:flex;flex-direction:column;gap:8px">
+          <button class="btn btn-primary btn-full" id="open-ver-modal-2">📤 새 버전 업로드</button>
+          <button class="btn btn-outline btn-full" onclick="toast('결재 요청 기능은 Phase 2에서 구현됩니다','')">✅ 결재 요청</button>
+          <div class="divider"></div>
+          <button class="btn btn-danger btn-full" onclick="archiveDoc('${doc.id}')">🗃 보관 처리</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 버전 업로드 모달 -->
+  <div id="ver-modal" style="display:none">
+    <div class="modal-overlay" onclick="if(event.target===this)closeVerModal()">
+      <div class="modal">
+        <div class="modal-header">
+          <span class="modal-title">📤 새 버전 업로드</span>
+          <div class="modal-close" onclick="closeVerModal()">✕</div>
+        </div>
+        <div class="modal-body">
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">버전 표기<span class="required">*</span></label>
+              <input class="form-control" id="v-ver" placeholder="예: Ver 0.91, Rev 1.0" autocomplete="off">
+            </div>
+            <div class="form-group">
+              <label class="form-label">단계</label>
+              <select class="form-control" id="v-stage">
+                <option value="development">개발 중</option>
+                <option value="draft">Draft</option>
+                <option value="released">등록본</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">개정 내용</label>
+            <textarea class="form-control" id="v-rev" rows="3" placeholder="주요 변경사항을 입력하세요" autocomplete="off"></textarea>
+          </div>
+          <div class="form-group">
+            <label class="form-label">파일 선택</label>
+            <div class="dropzone" id="v-dz" onclick="document.getElementById('v-file-input').click()">
+              <div class="dropzone-icon">📎</div>
+              <div class="dropzone-text"><strong>클릭하여 파일 선택</strong> 또는 여기에 드래그</div>
+              <div class="dropzone-text text-sm" style="margin-top:4px">.docx · .xlsx · .pdf</div>
+            </div>
+            <input type="file" id="v-file-input" accept=".docx,.xlsx,.pdf">
+            <div class="file-preview" id="v-file-preview"></div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" onclick="closeVerModal()">취소</button>
+          <button class="btn btn-primary" id="v-submit">업로드</button>
+        </div>
+      </div>
+    </div>
+  </div>`;
+
+  /* 모달 오픈 */
+  const openVerModal = () => { document.getElementById('ver-modal').style.display = ''; };
+  document.getElementById('open-ver-modal').addEventListener('click', openVerModal);
+  document.getElementById('open-ver-modal-2').addEventListener('click', openVerModal);
+
+  /* 파일 선택 */
+  const fi = document.getElementById('v-file-input');
+  const fp = document.getElementById('v-file-preview');
+  fi.addEventListener('change', e => {
+    const f = e.target.files[0];
+    if (f) { fp.textContent = `📎 ${f.name}  (${(f.size/1024).toFixed(0)} KB)`; fp.style.display = 'block'; }
+  });
+
+  /* 드래그앤드롭 */
+  const dz = document.getElementById('v-dz');
+  dz.addEventListener('dragover',  e => { e.preventDefault(); dz.classList.add('drag-over'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+  dz.addEventListener('drop', e => {
+    e.preventDefault(); dz.classList.remove('drag-over');
+    const f = e.dataTransfer.files[0];
+    if (f) {
+      const dt = new DataTransfer(); dt.items.add(f); fi.files = dt.files;
+      fp.textContent = `📎 ${f.name}`; fp.style.display = 'block';
+    }
+  });
+
+  /* 업로드 제출 */
+  document.getElementById('v-submit').addEventListener('click', async () => {
+    const version  = document.getElementById('v-ver').value.trim();
+    const stage    = document.getElementById('v-stage').value;
+    const revision = document.getElementById('v-rev').value.trim();
+    const file     = fi.files[0];
+    if (!version) { toast('버전 표기를 입력하세요', 'error'); return; }
+
+    const btn = document.getElementById('v-submit');
+    btn.disabled = true; btn.textContent = '업로드 중…';
+    try {
+      let filePath = null, fileName = null, fileSize = null;
+      if (file) {
+        filePath = await uploadFile(file, doc.security_level, doc.doc_number, version);
+        fileName = file.name; fileSize = file.size;
+      }
+      const { data: vd, error: ve } = await sb.from('document_versions').insert({
+        document_id: doc.id, version_string: version,
+        version_stage: stage, revision_content: revision || null,
+        file_path: filePath, file_name: fileName,
+        file_type: file ? file.name.split('.').pop().toLowerCase() : null,
+        file_size: fileSize, created_by: S.user.id,
+      }).select().single();
+      if (ve) throw ve;
+      /* current_version_id 갱신 */
+      await sb.from('documents').update({
+        current_version_id: vd.id, updated_at: new Date().toISOString()
+      }).eq('id', doc.id);
+      recordLog(doc.id, vd.id, 'upload');
+      toast('✅ 버전 업로드 완료', 'success');
+      closeVerModal();
+      await loadDocDetail(doc.id);
+      renderDocDetail();
+    } catch(e) {
+      toast('업로드 실패: ' + e.message, 'error');
+      btn.disabled = false; btn.textContent = '업로드';
+    }
+  });
+
+  recordLog(doc.id, doc.current_version_id, 'view');
+}
+
+function closeVerModal() {
+  const m = document.getElementById('ver-modal');
+  if (m) m.style.display = 'none';
+}
+
+/* ── 문서 등록 ──────────────────────────────────────────── */
+function renderRegister() {
+  const vc = document.getElementById('vc');
+  vc.innerHTML = `
+  <div style="max-width:660px">
+    <div class="card">
+      <div class="card-header"><span class="card-title">📝 신규 문서 등록</span></div>
+      <div class="card-body">
+
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">문서번호<span class="required">*</span></label>
+            <input class="form-control" id="rn" placeholder="예: W-P-G050000" autocomplete="off">
+          </div>
+          <div class="form-group">
+            <label class="form-label">문서명<span class="required">*</span></label>
+            <input class="form-control" id="rname" placeholder="예: 문서관리절차서" autocomplete="off">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">영문명</label>
+          <input class="form-control" id="rnamen" placeholder="예: Document Management Procedure" autocomplete="off">
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">시리즈<span class="required">*</span></label>
+            <select class="form-control" id="rseries">
+              <option value="">선택하세요</option>
+              ${S.series.map(s => `<option value="${s.id}">${s.id} — ${s.name_ko}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">문서 유형<span class="required">*</span></label>
+            <select class="form-control" id="rtype">
+              <option value="">선택하세요</option>
+              ${DOC_TYPES.map(t => `<option value="${t}">${t}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">보안등급<span class="required">*</span></label>
+            <select class="form-control" id="rsec">
+              ${[1,2,3,4].map(l => `<option value="${l}"${l===2?' selected':''}>${SEC[l].label}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">주관 부서</label>
+            <input class="form-control" id="rdept" placeholder="예: 품질팀" autocomplete="off">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">상위 문서번호</label>
+          <input class="form-control" id="rparent" placeholder="예: W-P-G050000 (선택)" autocomplete="off">
+        </div>
+
+        <div class="divider"></div>
+        <div style="font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.06em;margin-bottom:12px">
+          최초 버전 정보
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">초기 버전<span class="required">*</span></label>
+            <input class="form-control" id="rver" value="Ver 0.90" autocomplete="off">
+          </div>
+          <div class="form-group">
+            <label class="form-label">단계</label>
+            <select class="form-control" id="rstage">
+              <option value="development" selected>개발 중</option>
+              <option value="draft">Draft</option>
+              <option value="released">등록본</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">파일 업로드</label>
+          <div class="dropzone" id="r-dz" onclick="document.getElementById('r-file-input').click()">
+            <div class="dropzone-icon">📎</div>
+            <div class="dropzone-text"><strong>클릭하여 파일 선택</strong> 또는 드래그</div>
+            <div class="dropzone-text text-sm" style="margin-top:4px">.docx · .xlsx · .pdf</div>
+          </div>
+          <input type="file" id="r-file-input" accept=".docx,.xlsx,.pdf">
+          <div class="file-preview" id="r-fp"></div>
+        </div>
+
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px">
+          <button class="btn btn-ghost" onclick="navigate('documents')">취소</button>
+          <button class="btn btn-primary" id="r-submit">📝 등록</button>
+        </div>
+
+      </div>
+    </div>
+  </div>`;
+
+  const rfi = document.getElementById('r-file-input');
+  const rfp = document.getElementById('r-fp');
+  rfi.addEventListener('change', e => {
+    const f = e.target.files[0];
+    if (f) { rfp.textContent = `📎 ${f.name}  (${(f.size/1024).toFixed(0)} KB)`; rfp.style.display = 'block'; }
+  });
+
+  const rdz = document.getElementById('r-dz');
+  rdz.addEventListener('dragover',  e => { e.preventDefault(); rdz.classList.add('drag-over'); });
+  rdz.addEventListener('dragleave', () => rdz.classList.remove('drag-over'));
+  rdz.addEventListener('drop', e => {
+    e.preventDefault(); rdz.classList.remove('drag-over');
+    const f = e.dataTransfer.files[0];
+    if (f) {
+      const dt = new DataTransfer(); dt.items.add(f); rfi.files = dt.files;
+      rfp.textContent = `📎 ${f.name}`; rfp.style.display = 'block';
+    }
+  });
+
+  document.getElementById('r-submit').addEventListener('click', async () => {
+    const docNum  = document.getElementById('rn').value.trim();
+    const docName = document.getElementById('rname').value.trim();
+    const nameEn  = document.getElementById('rnamen').value.trim();
+    const series  = document.getElementById('rseries').value;
+    const docType = document.getElementById('rtype').value;
+    const secLvl  = parseInt(document.getElementById('rsec').value);
+    const dept    = document.getElementById('rdept').value.trim();
+    const parent  = document.getElementById('rparent').value.trim();
+    const version = document.getElementById('rver').value.trim();
+    const stage   = document.getElementById('rstage').value;
+    const file    = rfi.files[0];
+
+    if (!docNum || !docName || !series || !docType || !version) {
+      toast('필수 항목(*)을 모두 입력하세요', 'error'); return;
+    }
+
+    const btn = document.getElementById('r-submit');
+    btn.disabled = true; btn.textContent = '등록 중…';
+    try {
+      /* 1. 문서 마스터 */
+      const { data: d, error: de } = await sb.from('documents').insert({
+        doc_number: docNum, doc_name: docName,
+        doc_name_en: nameEn || null,
+        series_id: series, doc_type: docType,
+        security_level: secLvl, status: 'active',
+        department: dept || null,
+        parent_doc_number: parent || null,
+      }).select().single();
+      if (de) throw de;
+
+      /* 2. 파일 업로드 (선택) */
+      let filePath = null;
+      if (file) filePath = await uploadFile(file, secLvl, docNum, version);
+
+      /* 3. 초기 버전 */
+      const { data: v, error: ve } = await sb.from('document_versions').insert({
+        document_id: d.id, version_string: version,
+        version_stage: stage, file_path: filePath,
+        file_name: file?.name || null,
+        file_type: file ? file.name.split('.').pop().toLowerCase() : null,
+        file_size: file?.size || null,
+        created_by: S.user.id,
+      }).select().single();
+      if (ve) throw ve;
+
+      /* 4. current_version_id 연결 */
+      await sb.from('documents').update({ current_version_id: v.id }).eq('id', d.id);
+      recordLog(d.id, v.id, 'upload');
+
+      toast('✅ 문서 등록 완료', 'success');
+      S.filters = { series: '', security: '', status: 'active', search: '' };
+      await loadDocuments();
+      navigate('documents');
+    } catch(e) {
+      toast('등록 실패: ' + e.message, 'error');
+      btn.disabled = false; btn.textContent = '📝 등록';
+    }
+  });
+}
+
+/* ── 결재 현황 ──────────────────────────────────────────── */
+async function renderApprovals() {
+  await loadApprovals();
+  const vc = document.getElementById('vc');
+  vc.innerHTML = `
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">✅ 내 결재 대기 (${S.approvals.length}건)</span>
+    </div>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr>
+          <th>문서번호</th><th>문서명</th><th>버전</th>
+          <th>결재 단계</th><th>보안등급</th><th>요청일</th><th>처리</th>
+        </tr></thead>
+        <tbody>
+          ${S.approvals.length ? S.approvals.map(step => {
+            const req = step.approval_requests;
+            const ver = req?.document_versions;
+            const doc = ver?.documents;
+            return `
+            <tr>
+              <td><code>${doc?.doc_number || '-'}</code></td>
+              <td>${doc?.doc_name || '-'}</td>
+              <td>${ver?.version_string || '-'}</td>
+              <td><span class="badge b-dev">${step.step_name}</span></td>
+              <td>${secBadge(doc?.security_level)}</td>
+              <td class="text-muted text-sm">${fmtD(req?.created_at)}</td>
+              <td style="display:flex;gap:6px">
+                <button class="btn btn-primary btn-sm" onclick="processApprovalStep('${step.id}','approved')">승인</button>
+                <button class="btn btn-danger btn-sm"  onclick="processApprovalStep('${step.id}','rejected')">반려</button>
+              </td>
+            </tr>`;
+          }).join('') :
+          `<tr><td colspan="7">
+            <div class="empty">
+              <div class="empty-icon">✅</div>
+              <div class="empty-text">처리 대기 중인 결재가 없습니다</div>
+            </div>
+          </td></tr>`}
+        </tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
+/* ── 접근 로그 ──────────────────────────────────────────── */
+async function renderLogs() {
+  await loadLogs();
+  const isMgr = S.profile && ['대표이사','품질팀장'].includes(S.profile.role);
+  const vc = document.getElementById('vc');
+  vc.innerHTML = `
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">🔍 접근 로그 (최근 100건)</span>
+      <span class="text-muted text-sm">${isMgr ? '전체 로그 조회 중' : '내 로그만 표시'}</span>
+    </div>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr>
+          <th style="width:140px">일시</th>
+          <th style="width:80px">사용자</th>
+          <th style="width:130px">문서번호</th>
+          <th>문서명</th>
+          <th style="width:80px">행위</th>
+          <th style="width:110px">IP</th>
+        </tr></thead>
+        <tbody>
+          ${S.logs.length ? S.logs.map(l => `
+          <tr>
+            <td class="text-muted text-sm" style="white-space:nowrap">${fmtDT(l.created_at)}</td>
+            <td class="text-sm">${l.user_profiles?.name || '-'}</td>
+            <td><code class="text-sm">${l.documents?.doc_number || '-'}</code></td>
+            <td class="text-sm">${l.documents?.doc_name || '-'}</td>
+            <td><span class="badge b-dev">${ACTION_KO[l.action] || l.action}</span></td>
+            <td class="text-muted" style="font-size:11px;font-family:monospace">${l.ip_address || '-'}</td>
+          </tr>`).join('') :
+          `<tr><td colspan="6">
+            <div class="empty">
+              <div class="empty-icon">🔍</div>
+              <div class="empty-text">로그가 없습니다</div>
+            </div>
+          </td></tr>`}
+        </tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
+/* ╔══════════════════════════════════════════════════════════╗
+   ║  LAYER 5 · HELPERS · NAVIGATION · INIT                  ║
+   ╚══════════════════════════════════════════════════════════╝ */
+
+/* ── Toast ──────────────────────────────────────────────── */
+function toast(msg, type = '') {
+  const wrap = document.getElementById('toast');
+  const el   = document.createElement('div');
+  el.className = `toast-item${type ? ' toast-' + type : ''}`;
+  el.textContent = msg;
+  wrap.appendChild(el);
+  setTimeout(() => el.remove(), 3500);
+}
+
+/* ── 내비게이션 ─────────────────────────────────────────── */
+async function navigate(view, params = {}) {
+  S.view   = view;
+  S.params = params;
+  /* ② 보장: 프로필 미로드 상태 방지 */
+  if (!S.profile && S.user) await loadProfile(S.user.id);
+  if (view === 'documents') await loadDocuments();
+  renderApp();
+}
+
+/* ── 문서 상세로 이동 ───────────────────────────────────── */
+async function gotoDoc(docId) {
+  try {
+    await loadDocDetail(docId);
+    S.view = 'doc_detail';
+    renderApp();
+  } catch(e) {
+    toast('문서 로드 실패: ' + e.message, 'error');
+  }
+}
+
+/* ── 시리즈 필터 + 목록 이동 ────────────────────────────── */
+async function filterAndGo(seriesId) {
+  S.filters.series = seriesId;
+  S.filters.status = '';
+  await loadDocuments();
+  S.view = 'documents';
+  renderApp();
+}
+
+/* ── 문서 보관 처리 ─────────────────────────────────────── */
+async function archiveDoc(docId) {
+  if (!confirm('이 문서를 보관 처리하시겠습니까?\n(보관된 문서는 목록에서 기본 숨김됩니다)')) return;
+  try {
+    await sb.from('documents').update({ status: 'archived' }).eq('id', docId);
+    toast('보관 처리 완료', 'success');
+    S.filters.status = 'active';
+    await loadDocuments();
+    navigate('documents');
+  } catch(e) {
+    toast('처리 실패: ' + e.message, 'error');
+  }
+}
+
+/* ── 앱 초기화 ──────────────────────────────────────────── */
+async function init() {
+  /* 기존 세션 확인 */
+  const { data: { session } } = await sb.auth.getSession();
+
+  if (!session) {
+    renderLogin();
+    return;
+  }
+
+  S.user = session.user;
+
+  try {
+    /* ② 순서 보장:
+       1단계 — loadProfile() 완료 (보안등급 확정)
+       2단계 — 나머지 데이터 병렬 로드
+       3단계 — renderApp() 호출 (이때 S.profile 은 항상 non-null) */
+    await loadProfile(S.user.id);
+    await Promise.all([ loadStats(), loadSeries(), loadDocuments() ]);
+    renderApp();
+  } catch(e) {
+    console.error('[init] 오류:', e);
+    await sb.auth.signOut();
+    S.user = null; S.profile = null;
+    renderLogin();
+    toast('세션 초기화 중 오류가 발생했습니다: ' + e.message, 'error');
+  }
+}
+
+/* ── Auth 상태 변경 리스너 ─────────────────────────────── */
+sb.auth.onAuthStateChange(event => {
+  if (event === 'SIGNED_OUT') {
+    S.user = null; S.profile = null;
+    renderLogin();
+  }
+});
+
+/* ── 시작 ───────────────────────────────────────────────── */
+init();
+</script>
+</body>
+</html>
