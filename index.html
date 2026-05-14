@@ -20,7 +20,7 @@ input, select, textarea { font-family: inherit; font-size: inherit; }
 ══════════════════════════════════════ */
 :root {
   --navy:       #1F3864;
-  --navy-dk:    #152843;
+  --navy-dk:    #152843;h
   --navy-lt:    #2C4F8C;
   --surface:    #FFFFFF;
   --bg:         #EEF0F5;
@@ -1905,30 +1905,77 @@ function parseQemsFilename(filename) {
 
   if (parts.length < 2) return result;
 
-  /* 1. 문서번호 — 첫 번째 구간 그대로 사용
-        예: W-GL-Q072000, W-M-M100000-C */
+  /* ══ CFSPS 파일 전용 처리 ══════════════════════════════
+     패턴: [CFSPS-X장]_[문서명]_[V버전]_[부버전]
+     예 1: CFSPS-1장_개요_V1_32.docx
+     예 2: CFSPS-3_0_용어체계_구조_V1_60.docx
+     예 3: CFSPS-4장_스마트_건설_바닥시공_개요_V1_31.docx
+     QEMS와 달리 문서명이 버전 앞에 위치합니다             */
+  if (/^CFSPS/i.test(parts[0])) {
+
+    /* 1. 문서번호: CFSPS-3_0 처럼 두 번째 구간이 숫자이면 합칩니다 */
+    let nameStart = 1;
+    if (parts.length > 1 && /^\d+$/.test(parts[1])) {
+      result.docNumber = `${parts[0]}_${parts[1]}`;
+      nameStart = 2;
+    } else {
+      result.docNumber = parts[0];
+      nameStart = 1;
+    }
+
+    /* 2. 버전 탐색 (V1, V2 형태 — 파일 끝부분에 위치) */
+    let verStart = -1;
+    for (let i = nameStart; i < parts.length; i++) {
+      /* V1, V2 패턴만 (Ver는 QEMS용이라 제외) */
+      if (/^V\d+$/.test(parts[i])) {
+        verStart = i;
+        if (i + 1 < parts.length && /^\d+$/.test(parts[i + 1])) {
+          result.version = `V${parts[i].replace('V','')}.${parts[i + 1]}`;
+        } else {
+          result.version = parts[i];
+        }
+        break;
+      }
+    }
+
+    /* 3. 문서명 = 문서번호 다음 ~ 버전 이전 */
+    if (verStart > nameStart) {
+      result.docName = parts.slice(nameStart, verStart).join(' ');
+    } else if (verStart < 0) {
+      result.docName = parts.slice(nameStart).join(' ');
+    }
+
+    /* 4. 유형·시리즈 고정 */
+    result.docType  = 'CFSPS';
+    result.seriesId = 'CFSPS';
+    return result;
+  }
+
+  /* ══ QEMS 파일 처리 ════════════════════════════════════
+     패턴: [문서번호]_[Ver버전]_[부버전]_[문서명]_[P등급]
+     예: W-GL-Q072000_Ver0_94_공정검사지침서_P2.docx      */
+
   result.docNumber = parts[0];
 
-  /* 2. 버전 위치 탐색 — Ver/Rev/Draft 패턴 */
+  /* 1. 보안등급 — 마지막 구간 P1~P4 */
+  const last = parts[parts.length - 1];
+  let secIdx = -1;
+  if (/^P[1-4]$/i.test(last)) {
+    result.secLevel = parseInt(last[1]);
+    secIdx = parts.length - 1;
+  }
+
+  const searchEnd = secIdx >= 0 ? secIdx : parts.length;
+
+  /* 2. 버전 탐색 — Ver/Rev/Draft */
   let verEnd = -1;
-  for (let i = 1; i < parts.length; i++) {
+  for (let i = 1; i < searchEnd; i++) {
     const p = parts[i];
     if (/^(Ver|Rev)\d+$/i.test(p)) {
-      /* 다음 구간이 순수 숫자이면 마이너 버전 (Ver0_94 → Ver 0.94) */
-      if (i + 1 < parts.length && /^\d+$/.test(parts[i + 1])) {
-        const prefix = /^Ver/i.test(p) ? 'Ver' : 'Rev';
+      if (i + 1 < searchEnd && /^\d+$/.test(parts[i + 1])) {
+        const prefix = /^Rev/i.test(p) ? 'Rev' : 'Ver';
         const major  = p.replace(/^(Ver|Rev)/i, '');
         result.version = `${prefix} ${major}.${parts[i + 1]}`;
-        verEnd = i + 1;
-      } else {
-        result.version = p;
-        verEnd = i;
-      }
-      break;
-    } else if (/^(V)\d+$/i.test(p)) {
-      /* CFSPS 스타일: V1_32 → V1.32 */
-      if (i + 1 < parts.length && /^\d+$/.test(parts[i + 1])) {
-        result.version = `V${p.replace(/^V/i,'')}.${ parts[i+1]}`;
         verEnd = i + 1;
       } else {
         result.version = p;
@@ -1942,30 +1989,20 @@ function parseQemsFilename(filename) {
     }
   }
 
-  /* 3. 보안등급 — 마지막 구간이 P1~P4이면 추출 */
-  const last   = parts[parts.length - 1];
-  let   secIdx = -1;
-  if (/^P[1-4]$/i.test(last)) {
-    result.secLevel = parseInt(last[1]);
-    secIdx = parts.length - 1;
-  }
-
-  /* 4. 문서명 — 버전 구간 다음 ~ 보안등급 이전 */
+  /* 3. 문서명 — 버전 다음 ~ 보안등급 이전 */
   if (verEnd >= 0) {
-    const nameStart = verEnd + 1;
-    const nameEnd   = secIdx >= 0 ? secIdx : parts.length;
-    result.docName  = parts.slice(nameStart, nameEnd).join(' ');
+    const ns = verEnd + 1;
+    const ne = secIdx >= 0 ? secIdx : parts.length;
+    result.docName = parts.slice(ns, ne).join(' ');
   }
 
-  /* 5. 문서유형 추출 */
+  /* 4. 문서유형 */
   const dn = result.docNumber.split('-');
   if (dn[0] === 'W' && dn.length >= 2) {
-    result.docType = `W-${dn[1]}`;   /* W-GL, W-P, W-SOP … */
-  } else if (/^CFSPS/i.test(result.docNumber)) {
-    result.docType = 'CFSPS';
+    result.docType = `W-${dn[1]}`;
   }
 
-  /* 6. 시리즈 추론 */
+  /* 5. 시리즈 */
   result.seriesId = inferSeriesId(result.docNumber, result.docType);
 
   return result;
