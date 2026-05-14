@@ -1469,7 +1469,8 @@ function renderDocDetail() {
                   ${v.file_path
                     ? `<button class="btn btn-outline btn-sm"
                          onclick="downloadVersion('${v.file_path}','${(v.file_name||'').replace(/'/g,"\\'")}','${doc.id}','${v.id}')">
-                         ⬇ ${v.file_name || '다운로드'}</button>`
+                         ⬇ ${v.file_name || '다운로드'}
+                       </button>`
                     : '<span class="text-muted text-sm">파일 없음</span>'}
                 </td>
                 <td class="text-muted text-sm">${v.revision_content || '-'}</td>
@@ -1488,9 +1489,91 @@ function renderDocDetail() {
         <div class="card-header"><span class="card-title">⚡ 작업</span></div>
         <div class="card-body" style="display:flex;flex-direction:column;gap:8px">
           <button class="btn btn-primary btn-full" id="open-ver-modal-2">📤 새 버전 업로드</button>
+          <button class="btn btn-outline btn-full" id="open-edit-modal">✏️ 문서 정보 수정</button>
           <button class="btn btn-outline btn-full" onclick="toast('결재 요청 기능은 Phase 2에서 구현됩니다','')">✅ 결재 요청</button>
           <div class="divider"></div>
           <button class="btn btn-danger btn-full" onclick="archiveDoc('${doc.id}')">🗃 보관 처리</button>
+          <button class="btn btn-danger btn-full" onclick="deleteDoc('${doc.id}')">🗑 문서 완전 삭제</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 문서 정보 수정 모달 -->
+  <div id="edit-modal" style="display:none">
+    <div class="modal-overlay" onclick="if(event.target===this)closeEditModal()">
+      <div class="modal">
+        <div class="modal-header">
+          <span class="modal-title">✏️ 문서 정보 수정</span>
+          <div class="modal-close" onclick="closeEditModal()">✕</div>
+        </div>
+        <div class="modal-body">
+          <!-- 문서번호는 수정 불가 (변경 시 이력 혼란) -->
+          <div class="form-group">
+            <label class="form-label">문서번호</label>
+            <input class="form-control" value="${doc.doc_number}" disabled
+              style="background:#F5F5F5;color:var(--muted)">
+            <div style="font-size:11px;color:var(--muted);margin-top:4px">
+              ※ 문서번호는 변경할 수 없습니다
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">문서명<span class="required">*</span></label>
+              <input class="form-control" id="e-name" value="${doc.doc_name}" autocomplete="off">
+            </div>
+            <div class="form-group">
+              <label class="form-label">영문명</label>
+              <input class="form-control" id="e-name-en" value="${doc.doc_name_en||''}" autocomplete="off">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">시리즈<span class="required">*</span></label>
+              <select class="form-control" id="e-series">
+                ${S.series.map(s => `<option value="${s.id}"${doc.series_id===s.id?' selected':''}>${s.id} — ${s.name_ko}</option>`).join('')}
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">문서유형<span class="required">*</span></label>
+              <select class="form-control" id="e-type">
+                <optgroup label="── QEMS ──">
+                  ${['W-M','W-P','W-GL','W-SOP','W-WI','W-FR','W-QS','W-EM','W-SM'].map(t=>`<option value="${t}"${doc.doc_type===t?' selected':''}>${t}</option>`).join('')}
+                </optgroup>
+                <optgroup label="── 기타 ──">
+                  ${['CFSPS','CFSP-DS-PLAN','CFSP-NT','CES'].map(t=>`<option value="${t}"${doc.doc_type===t?' selected':''}>${t}</option>`).join('')}
+                </optgroup>
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">보안등급<span class="required">*</span></label>
+              <select class="form-control" id="e-sec">
+                ${[1,2,3,4].map(l=>`<option value="${l}"${doc.security_level===l?' selected':''}>${SEC[l].label}</option>`).join('')}
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">상태</label>
+              <select class="form-control" id="e-status">
+                ${Object.entries(STATUS).map(([k,v])=>`<option value="${k}"${doc.status===k?' selected':''}>${v.label}</option>`).join('')}
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">주관 부서</label>
+              <input class="form-control" id="e-dept" value="${doc.department||''}" autocomplete="off">
+            </div>
+            <div class="form-group">
+              <label class="form-label">상위 문서번호</label>
+              <input class="form-control" id="e-parent" value="${doc.parent_doc_number||''}" autocomplete="off">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" onclick="closeEditModal()">취소</button>
+          <button class="btn btn-primary" id="e-submit">💾 저장</button>
         </div>
       </div>
     </div>
@@ -1546,6 +1629,51 @@ function renderDocDetail() {
   const openVerModal = () => { document.getElementById('ver-modal').style.display = ''; };
   document.getElementById('open-ver-modal').addEventListener('click', openVerModal);
   document.getElementById('open-ver-modal-2').addEventListener('click', openVerModal);
+
+  /* 수정 모달 오픈 */
+  document.getElementById('open-edit-modal').addEventListener('click', () => {
+    document.getElementById('edit-modal').style.display = '';
+  });
+
+  /* 수정 저장 */
+  document.getElementById('e-submit').addEventListener('click', async () => {
+    const name    = document.getElementById('e-name').value.trim();
+    const nameEn  = document.getElementById('e-name-en').value.trim();
+    const series  = document.getElementById('e-series').value;
+    const docType = document.getElementById('e-type').value;
+    const secLvl  = parseInt(document.getElementById('e-sec').value);
+    const status  = document.getElementById('e-status').value;
+    const dept    = document.getElementById('e-dept').value.trim();
+    const parent  = document.getElementById('e-parent').value.trim();
+
+    if (!name || !series || !docType) {
+      toast('필수 항목을 모두 입력하세요', 'error'); return;
+    }
+
+    const btn = document.getElementById('e-submit');
+    btn.disabled = true; btn.textContent = '저장 중…';
+    try {
+      await sb.from('documents').update({
+        doc_name:           name,
+        doc_name_en:        nameEn  || null,
+        series_id:          series,
+        doc_type:           docType,
+        security_level:     secLvl,
+        status:             status,
+        department:         dept   || null,
+        parent_doc_number:  parent || null,
+        updated_at:         new Date().toISOString(),
+      }).eq('id', doc.id);
+
+      toast('✅ 문서 정보가 수정되었습니다.', 'success');
+      closeEditModal();
+      await loadDocDetail(doc.id);
+      renderDocDetail();
+    } catch(e) {
+      toast('수정 실패: ' + e.message, 'error');
+      btn.disabled = false; btn.textContent = '💾 저장';
+    }
+  });
 
   /* 파일 선택 */
   const fi = document.getElementById('v-file-input');
@@ -1613,6 +1741,56 @@ function renderDocDetail() {
 function closeVerModal() {
   const m = document.getElementById('ver-modal');
   if (m) m.style.display = 'none';
+}
+
+function closeEditModal() {
+  const m = document.getElementById('edit-modal');
+  if (m) m.style.display = 'none';
+}
+
+/* ── 문서 완전 삭제 ──────────────────────────────────────
+   순서: Storage 파일 → 접근로그 → 버전 → 문서
+   current_version_id 참조를 먼저 해제 후 삭제합니다.  */
+async function deleteDoc(docId) {
+  const confirmed = confirm(
+    '⚠️ 문서를 완전히 삭제합니다.\n\n' +
+    '· 모든 버전 이력이 삭제됩니다.\n' +
+    '· 업로드된 파일도 삭제됩니다.\n' +
+    '· 이 작업은 되돌릴 수 없습니다.\n\n' +
+    '계속하시겠습니까?'
+  );
+  if (!confirmed) return;
+
+  try {
+    /* 1. Storage 파일 삭제 */
+    const { data: vers } = await sb.from('document_versions')
+      .select('file_path').eq('document_id', docId);
+    for (const v of (vers || [])) {
+      if (v.file_path) {
+        await sb.storage.from('documents').remove([v.file_path]);
+      }
+    }
+
+    /* 2. current_version_id 참조 해제 */
+    await sb.from('documents')
+      .update({ current_version_id: null }).eq('id', docId);
+
+    /* 3. 버전 이력 삭제 */
+    await sb.from('document_versions').delete().eq('document_id', docId);
+
+    /* 4. 접근 로그 삭제 */
+    await sb.from('access_logs').delete().eq('document_id', docId);
+
+    /* 5. 문서 삭제 */
+    await sb.from('documents').delete().eq('id', docId);
+
+    toast('🗑 문서가 삭제되었습니다.', 'success');
+    S.filters = { series: '', security: '', status: 'active', search: '' };
+    await loadDocuments();
+    navigate('documents');
+  } catch(e) {
+    toast('삭제 실패: ' + e.message, 'error');
+  }
 }
 
 /* ── 문서 등록 ──────────────────────────────────────────── */
