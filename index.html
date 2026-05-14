@@ -667,7 +667,7 @@ code { font-family: 'Consolas', monospace; font-size: .92em; }
    ╚══════════════════════════════════════════════════════════╝ */
 
 const SUPABASE_URL = 'https://dvkaqsinhzigqceqqvml.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_nLSaE1b5e6LCGXfmNfsX1Q_S57pr_wR'; /* ← Supabase Dashboard > Settings > API > anon public 키 붙여넣기 */
+const SUPABASE_KEY = 'YOUR_SUPABASE_ANON_KEY'; /* ← Supabase Dashboard > Settings > API > anon public 키 붙여넣기 */
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: {
@@ -687,12 +687,13 @@ const NAV_ITEMS = [
   { id: 'logs',      icon: '🔍', label: '접근 로그',   group: '감사·보안' },
 ];
 
-/* 시리즈 → 한글명 맵 */
+/* 시리즈 → 한글명 맵 (5종) */
 const SERIES_LABEL = {
-  'G-series': '공통관리',   'C-series': '공사관리',     'Q-series': '품질·검사',
-  'E-series': '환경관리',   'S-series': '전략기획',     'R-series': '규제대응',
-  'W-M':      '통합경영매뉴얼', 'W-EM': '장비매뉴얼', 'W-SM': '서비스매뉴얼',
-  'CFSPS':    'CFSPS 표준',
+  'CFSPS': 'CFSPS 표준',
+  'QEMS':  'QEMS 경영시스템',
+  'PLAN':  '계획문서',
+  'NT':    'NT문서',
+  'CES':   'CES문서',
 };
 
 /* ② 보안등급 설정 — CSS 클래스 연동 */
@@ -1923,16 +1924,17 @@ function parseQemsFilename(filename) {
       nameStart = 1;
     }
 
-    /* 2. 버전 탐색 (V1, V2 형태 — 파일 끝부분에 위치) */
+    /* 2. 버전 탐색 (V1, V2 형태 — 대소문자 무관, 파일 끝부분에 위치) */
     let verStart = -1;
     for (let i = nameStart; i < parts.length; i++) {
-      /* V1, V2 패턴만 (Ver는 QEMS용이라 제외) */
-      if (/^V\d+$/.test(parts[i])) {
+      /* /^V\d+$/i — 'V1','v1','V2' 모두 인식 */
+      if (/^V\d+$/i.test(parts[i])) {
         verStart = i;
         if (i + 1 < parts.length && /^\d+$/.test(parts[i + 1])) {
-          result.version = `V${parts[i].replace('V','')}.${parts[i + 1]}`;
+          const num = parts[i].replace(/^V/i, '');
+          result.version = `V${num}.${parts[i + 1]}`;
         } else {
-          result.version = parts[i];
+          result.version = parts[i].toUpperCase();
         }
         break;
       }
@@ -2009,24 +2011,15 @@ function parseQemsFilename(filename) {
   return result;
 }
 
-/* 문서번호와 유형으로 시리즈를 추론합니다 */
+/* 문서번호와 유형으로 시리즈를 추론합니다 (5종 기준) */
 function inferSeriesId(docNumber, docType) {
-  if (docType === 'W-M')  return 'W-M';
-  if (docType === 'W-EM') return 'W-EM';
-  if (docType === 'W-SM') return 'W-SM';
-  if (/^CFSPS/i.test(docNumber)) return 'CFSPS';
-
-  /* 문서번호 3번째 구간의 첫 글자로 시리즈 판별
-     예: W-GL-Q072000 → Q → Q-series */
-  const parts = docNumber.split('-');
-  const seriesMap = {
-    G: 'G-series', C: 'C-series', Q: 'Q-series',
-    E: 'E-series', S: 'S-series', R: 'R-series'
-  };
-  for (let i = 2; i < parts.length; i++) {
-    const ch = (parts[i][0] || '').toUpperCase();
-    if (seriesMap[ch]) return seriesMap[ch];
-  }
+  const dn = (docNumber || '').toUpperCase();
+  if (dn.startsWith('CFSPS'))        return 'CFSPS';
+  if (dn.startsWith('CFSP-DS-PLAN')) return 'PLAN';
+  if (dn.startsWith('CFSP-NT') || dn.startsWith('NT-')) return 'NT';
+  if (dn.startsWith('CES'))          return 'CES';
+  /* W-P, W-GL, W-SOP, W-M, W-EM, W-SM 등 모든 QEMS 문서 */
+  if ((docType || '').startsWith('W-') || dn.startsWith('W-')) return 'QEMS';
   return '';
 }
 
