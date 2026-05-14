@@ -899,7 +899,14 @@ async function loadProfile(uid) {
 
 /* ── 문서 목록 ──────────────────────────────────────────── */
 async function loadDocuments() {
-  let q = sb.from('documents').select('*');
+  /* current_version_id → document_versions 조인으로 버전·단계 함께 조회 */
+  let q = sb.from('documents').select(`
+    id, doc_number, doc_name, doc_type, series_id,
+    security_level, status, updated_at,
+    cur_ver:document_versions!fk_current_version(
+      version_string, version_stage
+    )
+  `);
   const f = S.filters;
   if (f.series)   q = q.eq('series_id', f.series);
   if (f.security) q = q.eq('security_level', parseInt(f.security));
@@ -909,8 +916,14 @@ async function loadDocuments() {
   }
   q = q.order('updated_at', { ascending: false }).limit(300);
   const { data, error } = await q;
-  if (error) throw error;
-  S.docs = data || [];
+  if (error) {
+    /* JOIN 실패 시 버전 없이 기본 조회로 fallback */
+    const { data: d2 } = await sb.from('documents').select('*')
+      .order('updated_at', { ascending: false }).limit(300);
+    S.docs = d2 || [];
+  } else {
+    S.docs = data || [];
+  }
 }
 
 /* ── 문서 상세 + 버전 이력 ─────────────────────────────── */
@@ -1552,19 +1565,25 @@ function renderDashboard() {
       <table class="tbl">
         <thead><tr>
           <th>문서번호</th><th>문서명</th><th>시리즈</th>
+          <th>현재버전</th><th>단계</th>
           <th>보안등급</th><th>상태</th><th>최종수정</th>
         </tr></thead>
         <tbody>
-          ${S.docs.slice(0, 10).map(d => `
-          <tr class="row-link" onclick="gotoDoc('${d.id}')">
-            <td><code>${d.doc_number}</code></td>
-            <td>${d.doc_name}</td>
-            <td><span class="series-chip">${d.series_id || '-'}</span></td>
-            <td>${secBadge(d.security_level)}</td>
-            <td>${statusBadge(d.status)}</td>
-            <td class="text-muted text-sm">${fmtD(d.updated_at)}</td>
-          </tr>`).join('') ||
-          '<tr><td colspan="6"><div class="empty"><div class="empty-icon">📂</div><div class="empty-text">등록된 문서가 없습니다</div></div></td></tr>'}
+          ${S.docs.slice(0, 10).map(d => {
+            const ver = d.cur_ver;
+            return `
+            <tr class="row-link" onclick="gotoDoc('${d.id}')">
+              <td><code>${d.doc_number}</code></td>
+              <td>${d.doc_name}</td>
+              <td><span class="series-chip">${d.series_id || '-'}</span></td>
+              <td style="font-size:12px;font-weight:600">${ver?.version_string || '-'}</td>
+              <td>${ver?.version_stage ? stageBadge(ver.version_stage) : '<span class="text-muted text-sm">-</span>'}</td>
+              <td>${secBadge(d.security_level)}</td>
+              <td>${statusBadge(d.status)}</td>
+              <td class="text-muted text-sm">${fmtD(d.updated_at)}</td>
+            </tr>`;
+          }).join('') ||
+          '<tr><td colspan="8"><div class="empty"><div class="empty-icon">📂</div><div class="empty-text">등록된 문서가 없습니다</div></div></td></tr>'}
         </tbody>
       </table>
     </div>
@@ -1602,13 +1621,14 @@ function renderDocuments() {
     <div class="tbl-wrap">
       <table class="tbl">
         <thead><tr>
-          <th style="width:155px">문서번호</th>
+          <th style="width:150px">문서번호</th>
           <th>문서명</th>
-          <th style="width:105px">시리즈</th>
-          <th style="width:70px">유형</th>
-          <th style="width:95px">보안등급</th>
-          <th style="width:80px">상태</th>
-          <th style="width:90px">최종수정</th>
+          <th style="width:90px">시리즈</th>
+          <th style="width:85px">현재버전</th>
+          <th style="width:75px">단계</th>
+          <th style="width:90px">보안등급</th>
+          <th style="width:75px">상태</th>
+          <th style="width:85px">최종수정</th>
         </tr></thead>
         <tbody id="doc-tbody">${buildDocRows()}</tbody>
       </table>
@@ -1645,16 +1665,22 @@ function buildDocRows() {
         <div class="empty-text">검색 결과가 없습니다</div>
       </div>
     </td></tr>`;
-  return S.docs.map(d => `
+  return S.docs.map(d => {
+    const ver = d.cur_ver;  /* JOIN으로 가져온 현재 버전 정보 */
+    const verStr   = ver?.version_string || '-';
+    const stageBdg = ver?.version_stage  ? stageBadge(ver.version_stage) : '<span class="text-muted text-sm">-</span>';
+    return `
   <tr class="row-link" onclick="gotoDoc('${d.id}')">
     <td><code>${d.doc_number}</code></td>
     <td>${d.doc_name}</td>
     <td><span class="series-chip">${d.series_id || '-'}</span></td>
-    <td class="text-muted text-sm">${d.doc_type || '-'}</td>
+    <td style="font-size:12px;font-weight:600">${verStr}</td>
+    <td>${stageBdg}</td>
     <td>${secBadge(d.security_level)}</td>
     <td>${statusBadge(d.status)}</td>
     <td class="text-muted text-sm">${fmtD(d.updated_at)}</td>
-  </tr>`).join('');
+  </tr>`;
+  }).join('');
 }
 
 /* ── 문서 상세 ──────────────────────────────────────────── */
