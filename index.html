@@ -2048,20 +2048,17 @@ function applyParsedToRegisterForm(filename) {
   const secEl = document.getElementById('rsec');
   if (secEl && p.secLevel) secEl.value = String(p.secLevel);
 
-  /* 문서유형 선택 (옵션 목록에 있는 경우만) */
+  /* 문서유형 선택 */
   const typeEl = document.getElementById('rtype');
   if (typeEl && p.docType) {
-    for (const opt of typeEl.options) {
-      if (opt.value === p.docType) { typeEl.value = p.docType; break; }
-    }
+    typeEl.value = p.docType;
   }
 
-  /* 시리즈 선택 (옵션 목록에 있는 경우만) */
+  /* 시리즈 선택 — 직접 value 지정 후 실패 시 빈값 유지 */
   const serEl = document.getElementById('rseries');
   if (serEl && p.seriesId) {
-    for (const opt of serEl.options) {
-      if (opt.value === p.seriesId) { serEl.value = p.seriesId; break; }
-    }
+    serEl.value = p.seriesId;
+    /* 옵션에 없는 값이면 자동으로 '' 로 돌아가므로 별도 처리 불필요 */
   }
 
   /* 버전에 따라 단계 자동 설정 */
